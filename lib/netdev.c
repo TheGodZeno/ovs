@@ -40,7 +40,6 @@
 #include "fatal-signal.h"
 #include "hash.h"
 #include "openvswitch/list.h"
-#include "netdev-offload-provider.h"
 #include "netdev-provider.h"
 #include "netdev-vport.h"
 #include "odp-netlink.h"
@@ -71,7 +70,7 @@ COVERAGE_DEFINE(netdev_add_router);
 COVERAGE_DEFINE(netdev_get_stats);
 COVERAGE_DEFINE(netdev_push_header_drops);
 COVERAGE_DEFINE(netdev_soft_seg_good);
-COVERAGE_DEFINE(netdev_soft_seg_drops);
+COVERAGE_DEFINE(netdev_partial_seg_good);
 
 struct netdev_saved_flags {
     struct netdev *netdev;
@@ -154,8 +153,6 @@ netdev_initialize(void)
         netdev_register_provider(&netdev_internal_class);
         netdev_register_provider(&netdev_tap_class);
         netdev_vport_tunnel_register();
-
-        netdev_register_flow_api_provider(&netdev_offload_tc);
 #ifdef HAVE_AF_XDP
         netdev_register_provider(&netdev_afxdp_class);
         netdev_register_provider(&netdev_afxdp_nonpmd_class);
@@ -433,9 +430,9 @@ netdev_open(const char *name, const char *type, struct netdev **netdevp)
                 netdev->reconfigure_seq = seq_create();
                 netdev->last_reconfigure_seq =
                     seq_read(netdev->reconfigure_seq);
-                ovsrcu_set(&netdev->flow_api, NULL);
                 netdev->hw_info.oor = false;
-                atomic_init(&netdev->hw_info.miss_api_supported, false);
+                atomic_init(&netdev->hw_info.post_process_api_supported,
+                            false);
                 netdev->node = shash_add(&netdev_shash, name, netdev);
 
                 /* By default enable one tx and rx queue per netdev. */
@@ -584,8 +581,6 @@ netdev_unref(struct netdev *dev)
     if (!--dev->ref_cnt) {
         const struct netdev_class *class = dev->netdev_class;
         struct netdev_registered_class *rc;
-
-        netdev_uninit_flow_api(dev);
 
         dev->netdev_class->destruct(dev);
 
@@ -803,7 +798,8 @@ netdev_get_pt_mode(const struct netdev *netdev)
  * from netdev_class->send() if at least one batch failed to send. */
 static int
 netdev_send_tso(struct netdev *netdev, int qid,
-                struct dp_packet_batch *batch, bool concurrent_txq)
+                struct dp_packet_batch *batch, bool concurrent_txq,
+                bool partial_seg)
 {
     struct dp_packet_batch *batches;
     struct dp_packet *packet;
@@ -813,11 +809,15 @@ netdev_send_tso(struct netdev *netdev, int qid,
     int error;
 
     /* Calculate the total number of packets in the batch after
-     * the segmentation. */
+     * the (partial?) segmentation. */
     n_packets = 0;
     DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
         if (dp_packet_get_tso_segsz(packet)) {
-            n_packets += dp_packet_gso_nr_segs(packet);
+            if (partial_seg) {
+                n_packets += dp_packet_gso_partial_nr_segs(packet);
+            } else {
+                n_packets += dp_packet_gso_nr_segs(packet);
+            }
         } else {
             n_packets++;
         }
@@ -843,17 +843,17 @@ netdev_send_tso(struct netdev *netdev, int qid,
     curr_batch = batches;
     DP_PACKET_BATCH_REFILL_FOR_EACH (k, size, packet, batch) {
         if (dp_packet_get_tso_segsz(packet)) {
-            if (dp_packet_gso(packet, &curr_batch)) {
-                COVERAGE_INC(netdev_soft_seg_good);
+            if (partial_seg) {
+                dp_packet_gso_partial(packet, &curr_batch);
+                COVERAGE_INC(netdev_partial_seg_good);
             } else {
-                COVERAGE_INC(netdev_soft_seg_drops);
+                dp_packet_gso(packet, &curr_batch);
+                COVERAGE_INC(netdev_soft_seg_good);
             }
-            dp_packet_delete(packet);
         } else {
             if (dp_packet_batch_is_full(curr_batch)) {
                 curr_batch++;
             }
-
             dp_packet_batch_add(curr_batch, packet);
         }
     }
@@ -912,7 +912,8 @@ netdev_send(struct netdev *netdev, int qid, struct dp_packet_batch *batch,
         if (!(netdev_flags & NETDEV_TX_OFFLOAD_TCP_TSO)) {
             DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
                 if (dp_packet_get_tso_segsz(packet)) {
-                    return netdev_send_tso(netdev, qid, batch, concurrent_txq);
+                    return netdev_send_tso(netdev, qid, batch, concurrent_txq,
+                                           false);
                 }
             }
         } else if (!(netdev_flags & (NETDEV_TX_VXLAN_TNL_TSO |
@@ -921,16 +922,16 @@ netdev_send(struct netdev *netdev, int qid, struct dp_packet_batch *batch,
             DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
                 if (dp_packet_get_tso_segsz(packet)
                     && dp_packet_tunnel(packet)) {
-                    return netdev_send_tso(netdev, qid, batch, concurrent_txq);
+                    return netdev_send_tso(netdev, qid, batch, concurrent_txq,
+                                           false);
                 }
             }
         } else if (!(netdev_flags & NETDEV_TX_OFFLOAD_OUTER_UDP_CKSUM)) {
             DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
                 if (dp_packet_get_tso_segsz(packet)
-                    && (dp_packet_tunnel_vxlan(packet)
-                        || dp_packet_tunnel_geneve(packet))
-                    && dp_packet_l4_checksum_partial(packet)) {
-                    return netdev_send_tso(netdev, qid, batch, concurrent_txq);
+                    && dp_packet_gso_partial_nr_segs(packet) != 1) {
+                    return netdev_send_tso(netdev, qid, batch, concurrent_txq,
+                                           true);
                 }
             }
         }
@@ -1288,14 +1289,35 @@ netdev_features_to_bps(enum netdev_features features,
                                      : default_bps);
 }
 
-/* Returns true if any of the NETDEV_F_* bits that indicate a full-duplex link
- * are set in 'features', otherwise false. */
-bool
-netdev_features_is_full_duplex(enum netdev_features features)
+/* Stores the duplex capability of 'netdev' into 'full_duplex'.
+ *
+ * Some network devices may not implement support for this function.
+ * In such cases this function will always return EOPNOTSUPP. */
+int
+netdev_get_duplex(const struct netdev *netdev, bool *full_duplex)
 {
-    return (features & (NETDEV_F_10MB_FD | NETDEV_F_100MB_FD | NETDEV_F_1GB_FD
-                        | NETDEV_F_10GB_FD | NETDEV_F_40GB_FD
-                        | NETDEV_F_100GB_FD | NETDEV_F_1TB_FD)) != 0;
+    int error;
+
+    *full_duplex = false;
+    error = netdev->netdev_class->get_duplex
+            ? netdev->netdev_class->get_duplex(netdev, full_duplex)
+            : EOPNOTSUPP;
+
+    if (error == EOPNOTSUPP) {
+        enum netdev_features current;
+
+        error = netdev_get_features(netdev, &current, NULL, NULL, NULL);
+        if (!error && (current & NETDEV_F_OTHER)) {
+             error = EOPNOTSUPP;
+        }
+        if (!error) {
+            *full_duplex = (current & (NETDEV_F_10MB_FD | NETDEV_F_100MB_FD
+                                        | NETDEV_F_1GB_FD | NETDEV_F_10GB_FD
+                                        | NETDEV_F_40GB_FD | NETDEV_F_100GB_FD
+                                        | NETDEV_F_1TB_FD)) != 0;
+        }
+    }
+    return error;
 }
 
 /* Set the features advertised by 'netdev' to 'advertise'.  Returns 0 if
@@ -2425,5 +2447,67 @@ netdev_free_custom_stats_counters(struct netdev_custom_stats *custom_stats)
             custom_stats->counters = NULL;
             custom_stats->size = 0;
         }
+        free(custom_stats->label);
+        custom_stats->label = NULL;
+    }
+}
+
+uint32_t
+netdev_get_block_id(struct netdev *netdev)
+{
+    const struct netdev_class *class = netdev->netdev_class;
+
+    return (class->get_block_id
+            ? class->get_block_id(netdev)
+            : 0);
+}
+
+/*
+ * Get the value of the hw info parameter specified by type.
+ * Returns the value on success (>= 0).  Returns -1 on failure.
+ */
+int
+netdev_get_hw_info(struct netdev *netdev, int type)
+{
+    int val = -1;
+
+    switch (type) {
+    case HW_INFO_TYPE_OOR:
+        val = netdev->hw_info.oor;
+        break;
+    case HW_INFO_TYPE_PEND_COUNT:
+        val = netdev->hw_info.pending_count;
+        break;
+    case HW_INFO_TYPE_OFFL_COUNT:
+        val = netdev->hw_info.offload_count;
+        break;
+    default:
+        break;
+    }
+
+    return val;
+}
+
+/*
+ * Set the value of the hw info parameter specified by type.
+ */
+void
+netdev_set_hw_info(struct netdev *netdev, int type, int val)
+{
+    switch (type) {
+    case HW_INFO_TYPE_OOR:
+        if (val == 0) {
+            VLOG_DBG("Offload rebalance: netdev: %s is not OOR", netdev->name);
+        }
+        netdev->hw_info.oor = val;
+        break;
+    case HW_INFO_TYPE_PEND_COUNT:
+        netdev->hw_info.pending_count = val;
+        break;
+    case HW_INFO_TYPE_OFFL_COUNT:
+        netdev->hw_info.offload_count = val;
+        break;
+    default:
+        break;
     }
 }

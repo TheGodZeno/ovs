@@ -95,7 +95,10 @@ static bool
 read_received_backtrace(int fd, void *dest, size_t len)
 {
     VLOG_DBG("%s fd %d", __func__, fd);
-    fcntl(fd, F_SETFL, O_NONBLOCK);
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
+        VLOG_WARN("Failed to set fd %d non-blocking: %s",
+                  fd, ovs_strerror(errno));
+    }
     memset(dest, 0, len);
 
     int byte_read = read(fd, dest, len);
@@ -149,7 +152,7 @@ log_received_backtrace(int fd)
     if (read_received_backtrace(fd, &bt, sizeof bt)) {
         struct ds ds = DS_EMPTY_INITIALIZER;
 
-        bt.n_frames = MIN(bt.n_frames, BACKTRACE_MAX_FRAMES);
+        bt.n_frames = MIN(MAX(bt.n_frames, 0), BACKTRACE_MAX_FRAMES);
 
         ds_put_cstr(&ds, BACKTRACE_DUMP_MSG);
         backtrace_format(&ds, &bt, "\n");

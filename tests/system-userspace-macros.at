@@ -91,6 +91,11 @@ m4_define([CHECK_CONNTRACK_LOCAL_STACK],
 # The userspace datapath supports fragment overlap check.
 m4_define([CHECK_CONNTRACK_FRAG_OVERLAP])
 
+# CHECK_CONNTRACK_SNAT_ICMP_ID()
+#
+# The userspace conntrack supports unique ICMP id allocation on SNAT.
+m4_define([CHECK_CONNTRACK_SNAT_ICMP_ID])
+
 # CHECK_CONNTRACK_NAT()
 #
 # Perform requirements checks for running conntrack NAT tests. The userspace
@@ -352,6 +357,11 @@ m4_define([CHECK_L3L4_CONNTRACK_REASM],
 [
     AT_SKIP_IF([:])
 ])
+
+# CHECK_NO_DPDK_OFFLOAD
+#
+# Plain userspace tests do not use dpdk's rte_flow offload.
+m4_define([CHECK_NO_DPDK_OFFLOAD])
 
 # CHECK_NO_TC_OFFLOAD
 #

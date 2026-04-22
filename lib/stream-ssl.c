@@ -1080,6 +1080,7 @@ do_ssl_init(void)
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
                        NULL);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+    SSL_CTX_set_options(ctx, SSL_OP_NO_TICKET);
     SSL_CTX_set_cipher_list(ctx, "DEFAULT:@SECLEVEL=2");
 
     return 0;
@@ -1289,7 +1290,7 @@ stream_ssl_set_protocols(const char *arg)
         {"TLSv1.2", TLS1_2_VERSION,      false},
         {"TLSv1.3", TLS1_3_VERSION,      false},
     };
-    char *dash = strchr(arg, '-');
+    const char *dash = strchr(arg, '-');
     bool or_later = false;
     int len = strlen(arg);
 

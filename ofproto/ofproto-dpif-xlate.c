@@ -72,6 +72,7 @@
 COVERAGE_DEFINE(xlate_actions);
 COVERAGE_DEFINE(xlate_actions_oversize);
 COVERAGE_DEFINE(xlate_actions_too_many_output);
+COVERAGE_DEFINE(xlate_actions_neigh_sent);
 
 VLOG_DEFINE_THIS_MODULE(ofproto_dpif_xlate);
 
@@ -3931,17 +3932,26 @@ native_tunnel_output(struct xlate_ctx *ctx, const struct xport *xport,
         s_ip = in6_addr_get_mapped_ipv4(&s_ip6);
     }
 
-    err = tnl_neigh_lookup(out_dev->xbridge->name, &d_ip6, &dmac);
+    err = tnl_neigh_lookup(out_dev->xbridge->name, &d_ip6, &dmac, true);
     if (err) {
         struct in6_addr nh_s_ip6 = in6addr_any;
 
         put_cloned_drop_action(ctx->xbridge->ofproto, ctx->odp_actions,
                                XLATE_TUNNEL_NEIGH_CACHE_MISS,
                                !is_last_action);
+        if (err == EINPROGRESS) {
+            xlate_report(ctx, OFT_DETAIL,
+                         "neighbor cache miss for %s on bridge %s, "
+                         "waiting on %s request",
+                         buf_dip6, out_dev->xbridge->name,
+                         d_ip ? "ARP" : "ND");
+            return err;
+        }
         xlate_report(ctx, OFT_DETAIL,
                      "neighbor cache miss for %s on bridge %s, "
                      "sending %s request",
                      buf_dip6, out_dev->xbridge->name, d_ip ? "ARP" : "ND");
+        COVERAGE_INC(xlate_actions_neigh_sent);
 
         err = ovs_router_get_netdev_source_address(
             &d_ip6, netdev_get_name(out_dev->netdev), &nh_s_ip6);
@@ -4474,10 +4484,11 @@ compose_output_action__(struct xlate_ctx *ctx, ofp_port_t ofp_port,
     struct eth_addr flow_dl_src = flow->dl_src;
     ovs_be32 flow_packet_type = flow->packet_type;
     ovs_be16 flow_dl_type = flow->dl_type;
+    bool skip_mirrors = false;
 
     /* If 'struct flow' gets additional metadata, we'll need to zero it out
      * before traversing a patch port. */
-    BUILD_ASSERT_DECL(FLOW_WC_SEQ == 42);
+    BUILD_ASSERT_DECL(FLOW_WC_SEQ == 43);
 
     if (!check_output_prerequisites(ctx, xport, flow, check_stp)) {
         return;
@@ -4592,6 +4603,10 @@ compose_output_action__(struct xlate_ctx *ctx, ofp_port_t ofp_port,
             /* Recirc action. */
             nl_msg_put_u32(ctx->odp_actions, OVS_ACTION_ATTR_RECIRC,
                            xr->recirc_id);
+
+            /* Recirculation does not send the packet anywhere, so it
+             * should not trigger mirroring. */
+            skip_mirrors = true;
         } else if (is_native_tunnel) {
             /* Output to native tunnel port. */
             native_tunnel_output(ctx, xport, flow, odp_port, truncate,
@@ -4634,7 +4649,8 @@ compose_output_action__(struct xlate_ctx *ctx, ofp_port_t ofp_port,
         ctx->nf_output_iface = ofp_port;
     }
 
-    if (mbridge_has_mirrors(ctx->xbridge->mbridge) && xport->xbundle) {
+    if (!skip_mirrors && mbridge_has_mirrors(ctx->xbridge->mbridge)
+        && xport->xbundle) {
         mirror_packet(ctx, xport->xbundle,
                       xbundle_mirror_dst(xport->xbundle->xbridge,
                                          xport->xbundle));
@@ -4988,6 +5004,8 @@ pick_dp_hash_select_group(struct xlate_ctx *ctx, struct group_dpif *group)
             hash_alg = OVS_HASH_ALG_L4;
         }
         ctx_trigger_recirculate_with_hash(ctx, hash_alg, group->hash_basis);
+        xlate_report(ctx, OFT_DETAIL,
+                     "selection method in use: dp_hash, recirculating");
         return NULL;
     } else {
         uint32_t hash_mask = group->hash_mask;
@@ -5067,7 +5085,9 @@ xlate_group_action__(struct xlate_ctx *ctx, struct group_dpif *group,
             xlate_group_bucket(ctx, bucket, is_last_action);
             xlate_group_stats(ctx, group, bucket);
         } else {
-            xlate_report(ctx, OFT_DETAIL, "no live bucket");
+            if (!ctx->freezing) {
+                xlate_report(ctx, OFT_DETAIL, "no live bucket");
+            }
             if (ctx->xin->xcache) {
                 ofproto_group_unref(&group->up);
             }
@@ -7661,7 +7681,13 @@ do_xlate_actions(const struct ofpact *ofpacts, size_t ofpacts_len,
             /* Set the field only if the packet actually has it. */
             if (mf_are_prereqs_ok(mf, flow, wc)) {
                 mf_set_mask_l3_prereqs(mf, flow, wc);
-                mf_mask_field_masked(mf, ofpact_set_field_mask(set_field), wc);
+                /* Tunnel fields do not need to be unwildcarded, as ODP library
+                 * doesn't rely on matching these fields when they are written
+                 * but not read. */
+                if (!mf_is_tunnel_field(mf)) {
+                    mf_mask_field_masked(mf, ofpact_set_field_mask(set_field),
+                                         wc);
+                }
                 mf_set_flow_value_masked(mf, set_field->value,
                                          ofpact_set_field_mask(set_field),
                                          flow);

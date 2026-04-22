@@ -48,6 +48,7 @@ enum OVS_PACKED_ENUM dp_packet_source {
 };
 
 #define DP_PACKET_CONTEXT_SIZE 64
+#define INVALID_FLOW_MARK 0
 
 /* Bit masks for the 'offloads' member of the 'dp_packet' structure. */
 enum OVS_PACKED_ENUM dp_packet_offload_mask {
@@ -577,6 +578,18 @@ static inline uint32_t
 dp_packet_get_tcp_payload_length(const struct dp_packet *pkt)
 {
     const char *tcp_payload = dp_packet_get_tcp_payload(pkt);
+    if (tcp_payload) {
+        return ((char *) dp_packet_tail(pkt) - dp_packet_l2_pad_size(pkt)
+                - tcp_payload);
+    } else {
+        return 0;
+    }
+}
+
+static inline uint32_t
+dp_packet_get_inner_tcp_payload_length(const struct dp_packet *pkt)
+{
+    const char *tcp_payload = dp_packet_get_inner_tcp_payload(pkt);
     if (tcp_payload) {
         return ((char *) dp_packet_tail(pkt) - dp_packet_l2_pad_size(pkt)
                 - tcp_payload);
@@ -1171,6 +1184,12 @@ dp_packet_inner_ip_checksum_set_partial(struct dp_packet *p)
     p->offloads |= DP_PACKET_OL_INNER_IP_CKSUM_MASK;
 }
 
+static inline bool OVS_WARN_UNUSED_RESULT
+dp_packet_inner_ip_checksum_valid(const struct dp_packet *p)
+{
+    return !!(p->offloads & DP_PACKET_OL_INNER_IP_CKSUM_GOOD);
+}
+
 /* Calculate and set the IPv4 header checksum in packet 'p'. */
 static inline void
 dp_packet_ip_set_header_csum(struct dp_packet *p, bool inner)
@@ -1362,6 +1381,12 @@ static inline void
 dp_packet_inner_l4_checksum_set_partial(struct dp_packet *p)
 {
     p->offloads |= DP_PACKET_OL_INNER_L4_CKSUM_MASK;
+}
+
+static inline bool OVS_WARN_UNUSED_RESULT
+dp_packet_inner_l4_checksum_valid(const struct dp_packet *p)
+{
+    return !!(p->offloads & DP_PACKET_OL_INNER_L4_CKSUM_GOOD);
 }
 
 static inline void

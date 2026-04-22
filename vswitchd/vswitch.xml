@@ -254,6 +254,25 @@
         </p>
       </column>
 
+      <column name="other_config" key="hw-offload-priority"
+              type='{"type": "string"}'>
+        <p>
+          This configuration sets the order of the hardware offload providers
+          to try when multiple exist for a given datapath implementation.
+          The argument provided should be a list of comma-separated hardware
+          offload provider names.
+        </p>
+        <p>
+          If implementations are missing from the list, they are added at the
+          end in undefined order.
+        </p>
+        <p>
+          The default value is <code>tc,dpdk</code>.  Changing this value
+          requires restarting the daemon if hardware offload is already
+          enabled.
+        </p>
+      </column>
+
       <column name="other_config" key="n-offload-threads"
               type='{"type": "integer", "minInteger": 1, "maxInteger": 10}'>
         <p>
@@ -3446,18 +3465,6 @@ ovs-vsctl add-port br0 p0 -- set Interface p0 type=patch options:peer=p1 \
         </p>
       </column>
 
-      <column name="options" key="use-need-wakeup"
-              type='{"type": "boolean"}'>
-        <p>
-          Specifies whether to use need_wakeup feature in afxdp netdev.
-          If enabled, OVS explicitly wakes up the kernel RX, using poll()
-          syscall and wakes up TX, using sendto() syscall. For physical
-          devices, this feature improves the performance by avoiding
-          unnecessary sendto syscalls.
-          Defaults to true if supported by libbpf.
-        </p>
-      </column>
-
       <column name="options" key="vhost-server-path"
               type='{"type": "string"}'>
         <p>
@@ -4647,6 +4654,38 @@ ovs-vsctl add-port br0 p0 -- set Interface p0 type=patch options:peer=p1 \
         <p>
           This parameter has an effect only on netdev dpdk interfaces.
         </p>
+      </column>
+    </group>
+
+    <group title="Hardware Offload Configuration">
+      <column name="other_config" key="hw-offload-priority"
+              type='{"type": "string"}'>
+        <p>
+          This configuration sets an explicit list of hardware offload
+          providers to try on this Interface.  The argument should be a
+          comma-separated list of hardware offload provider names, or the
+          word <code>none</code>.
+        </p>
+        <p>
+          If <code>none</code> is encountered in the list, further trying of
+          offload providers is stopped.  For example, if the list only contains
+          <code>none</code>, hardware offload is disabled on this interface
+          even if it is globally enabled.  Note that unknown hardware offload
+          provider names are ignored.
+        </p>
+        <p>
+          If not set, uses the global
+          <ref table="Open_vSwitch" column="other_config"
+               key="hw-offload-priority"/>
+          configuration.  Changing this value after offload enablement requires
+          restarting the daemon.  To avoid restarting the daemon, set this
+          option in the same transaction that adds the port.  For example:
+        </p>
+
+        <pre>
+ovs-vsctl add-port br0 p1 -- \
+          set Interface p1 other_config:hw-offload-priority=none
+       </pre>
       </column>
     </group>
 

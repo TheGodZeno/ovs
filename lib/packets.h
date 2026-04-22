@@ -1174,6 +1174,11 @@ extern const struct in6_addr in6addr_all_routers;
 #define IN6ADDR_ALL_ROUTERS_INIT { { { 0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00, \
                                        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x02 } } }
 
+extern const struct in6_addr in6addr_v4mapped_any;
+#define IN6ADDR_V4MAPPED_ANY_INIT \
+    { { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, \
+          0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 } } }
+
 static inline bool ipv6_addr_equals(const struct in6_addr *a,
                                     const struct in6_addr *b)
 {
@@ -1608,6 +1613,8 @@ bool ipv6_is_zero(const struct in6_addr *a);
 struct in6_addr ipv6_create_mask(int mask);
 int ipv6_count_cidr_bits(const struct in6_addr *netmask);
 bool ipv6_is_cidr(const struct in6_addr *netmask);
+bool ipv6_addr_equals_masked(const struct in6_addr *a,
+                             const struct in6_addr *b, int plen);
 
 bool ipv6_parse(const char *s, struct in6_addr *ip);
 char *ipv6_parse_masked(const char *s, struct in6_addr *ipv6,
@@ -1644,6 +1651,10 @@ void packet_set_tcp_port(struct dp_packet *, ovs_be16 src, ovs_be16 dst);
 void packet_set_udp_port(struct dp_packet *, ovs_be16 src, ovs_be16 dst);
 void packet_set_sctp_port(struct dp_packet *, ovs_be16 src, ovs_be16 dst);
 void packet_set_icmp(struct dp_packet *, uint8_t type, uint8_t code);
+void packet_set_icmp_id(struct dp_packet *, ovs_be16 icmp_id);
+uint8_t packet_get_icmp_type(const struct dp_packet *packet);
+uint8_t packet_get_ip_proto(const struct dp_packet *packet);
+bool packet_is_icmpv4_info_message(const struct dp_packet *packet);
 void packet_set_nd(struct dp_packet *, const struct in6_addr *target,
                    const struct eth_addr sll, const struct eth_addr tll);
 void packet_set_nd_ext(struct dp_packet *packet,
@@ -1689,6 +1700,7 @@ bool packet_rh_present(struct dp_packet *packet, uint8_t *nexthdr,
 void IP_ECN_set_ce(struct dp_packet *pkt, bool is_ipv6);
 void packet_tcp_complete_csum(struct dp_packet *, bool is_inner);
 void packet_udp_complete_csum(struct dp_packet *, bool is_inner);
+bool packet_udp_tunnel_csum(struct dp_packet *);
 void packet_sctp_complete_csum(struct dp_packet *, bool is_inner);
 
 #define DNS_HEADER_LEN 12

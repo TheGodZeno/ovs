@@ -1,5 +1,17 @@
-Post-v3.6.0
+Post-v3.7.0
 --------------------
+   - Userspace datapath:
+     * ARP/ND lookups for native tunnel are now rate limited. The holdout
+       timer can be configured with 'tnl/neigh/retrans_time'.
+
+
+v3.7.0 - 16 Feb 2026
+--------------------
+   - AF_XDP:
+     * AF_XDP support now requires Linux kernel v5.4+ or a nominally older
+       distribution kernel with sufficient features backported.
+     * Setting or reporting "use-need-wakeup" is no longer supported.  The
+       feature is always enabled.
    - TLS:
      * Added support for TLS Server Name Indication (SNI) with the new
        --ssl-server-name option.  This allows specifying the server name
@@ -10,12 +22,47 @@ Post-v3.6.0
    - Userspace datapath:
      * Conntrack now supports the FTP commands EPSV and EPRT with IPv4
        connections, instead of limiting these commands to IPv6 only.
+     * Userspace tunneling now supports multi-table and source-based routing
+       using routing rules for selecting next hops after encapsulation.
    - DPDK:
-     * OVS validated with DPDK 24.11.3.
+     * Add support for DPDK 25.11.
+   - Flow HW Offload:
+     * New global configuration option 'other-config:hw-offload-priority'
+       that allows to set the order of the hardware offload providers
+       to try when multiple exist for a given datapath implementation.
+     * New per-interface configuration option
+       'other-config:hw-offload-priority' that allows to set order of the
+       hardware offload providers or disable flow offloading on a particular
+       interface.
    - OVSDB-IDL:
      * New ovsdb_idl_txn_assert_read_only() interface to mark transactions
        as read-only and trigger assertion failure when application attempts
        to modify the database data through this transaction.
+   - ovs-appctl:
+     * 'ovs/route/show': added new option, table=[ID|all], to list routes from
+       a specific table or all routes from all tables.
+     * 'ovs/route/add' and 'ovs/route/del': added new option, table=ID, to
+       add/delete a route from a specific table.
+     * 'ovs/route/lookup': added new option, src=IP, to perform lookup with
+       a specific source IP address.
+     * Added a new sub-command, ovs/route/rule/show, to list OVS routing rules.
+     * Added new sub-commands, ovs/route/rule/{add,del}, to add and remove
+       user-specified routing rules.
+   - Windows Support
+     * Support for compiling for and running on Windows has been deprecated.
+   - Deprecation of support for running OVS user-space with OOT kernel module
+     * The OOT kernel module refers to the kernel module that was
+       previously distributed as part of OVS - out of tree (OOT) from the
+       perspective of the upstream Kernel tree.
+     * The OOT kernel module: was deprecated in v2.15; was last present in
+       the v2.17 release; and is no longer present in any supported release
+       since v2.17 went EOL when v3.5 was released.
+   - The following AVX512-specific features are now deprecated:
+     * AVX512-optimized DPCLS lookups.
+     * AVX512-optimized action handling.
+     * AVX512-optimized miniflow extraction.
+     * AVX512-optimized DPIF input processing.
+   - Increased the number of OpenFlow registers to 32.
 
 
 v3.6.0 - 18 Aug 2025

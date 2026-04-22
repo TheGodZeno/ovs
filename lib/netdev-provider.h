@@ -21,7 +21,6 @@
 
 #include "connectivity.h"
 #include "netdev.h"
-#include "netdev-offload.h"
 #include "openvswitch/list.h"
 #include "ovs-numa.h"
 #include "ovs-rcu.h"
@@ -99,9 +98,12 @@ struct netdev {
     struct shash_node *node;            /* Pointer to element in global map. */
     struct ovs_list saved_flags_list; /* Contains "struct netdev_saved_flags". */
 
-    /* Functions to control flow offloading. */
-    OVSRCU_TYPE(const struct netdev_flow_api *) flow_api;
-    const char *dpif_type;          /* Type of dpif this netdev belongs to. */
+    /* The type of dpif this netdev is associated with.  This is set once
+     * when the netdev is added to a specific dpif. */
+    const char *dpif_type;
+
+    /* Data used for controlling flow offloading via dpif-offload. */
+    OVSRCU_TYPE(const struct dpif_offload *) dpif_offload;
     struct netdev_hw_info hw_info;  /* Offload-capable netdev info. */
 };
 
@@ -513,6 +515,13 @@ struct netdev_class {
      */
     int (*get_speed)(const struct netdev *netdev, uint32_t *current,
                      uint32_t *max);
+
+    /* Stores the current duplex status of 'netdev' into '*full_duplex'.
+     * 'true' means full duplex, 'false' means half duplex.
+     *
+     * This function may be set to null if it would always return EOPNOTSUPP.
+     */
+    int (*get_duplex)(const struct netdev *netdev, bool *full_duplex);
 
     /* Set the features advertised by 'netdev' to 'advertise', which is a
      * set of NETDEV_F_* bits.

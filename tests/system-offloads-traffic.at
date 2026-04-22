@@ -93,6 +93,41 @@ AT_CHECK([ovs-appctl upcall/show | grep -E "offloaded flows : [[1-9]]"], [0], [i
 OVS_TRAFFIC_VSWITCHD_STOP
 AT_CLEANUP
 
+AT_SETUP([offloads - tc-policy configuration])
+OVS_TRAFFIC_VSWITCHD_START([], [],
+  [-- set Open_vSwitch . other_config:hw-offload=true \
+   -- set Open_vSwitch . other_config:tc-policy=skip_hw])
+
+AT_CHECK([ovs-ofctl add-flow br0 "actions=normal"])
+
+ADD_NAMESPACES(at_ns0, at_ns1)
+
+ADD_VETH(p0, at_ns0, br0, "10.1.1.1/24")
+ADD_VETH(p1, at_ns1, br0, "10.1.1.2/24")
+AT_CHECK([ovs-appctl dpctl/dump-flows], [0], [ignore])
+
+NS_CHECK_EXEC([at_ns0], [ping -q -c 10 -i 0.1 -W 2 10.1.1.2 | FORMAT_PING], [0], [dnl
+10 packets transmitted, 10 received, 0% packet loss, time 0ms
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows | grep "eth_type(0x0800)" | DUMP_CLEAN_SORTED], [0], [dnl
+in_port(2),eth(macs),eth_type(0x0800),ipv4(frag=no), packets:9, bytes:756, used:0.001s, actions:output
+in_port(3),eth(macs),eth_type(0x0800),ipv4(frag=no), packets:9, bytes:756, used:0.001s, actions:output
+])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows type=ovs | grep "eth_type(0x0800)" | DUMP_CLEAN_SORTED], [0], [])
+
+AT_CHECK([ovs-appctl dpctl/dump-flows type=tc,offloaded | grep "eth_type(0x0800)" | DUMP_CLEAN_SORTED], [0], [dnl
+in_port(2),eth(macs),eth_type(0x0800),ipv4(frag=no), packets:9, bytes:756, used:0.001s, actions:output
+in_port(3),eth(macs),eth_type(0x0800),ipv4(frag=no), packets:9, bytes:756, used:0.001s, actions:output
+])
+
+AT_CHECK([ovs-appctl upcall/show | grep -E "offloaded flows : [[1-9]]"], [0], [ignore])
+AT_CHECK([tc -d filter show dev ovs-p0 ingress | grep -q "skip_hw"])
+
+OVS_TRAFFIC_VSWITCHD_STOP
+AT_CLEANUP
+
 AT_SETUP([offloads - set ingress_policing_rate and ingress_policing_burst - offloads disabled])
 AT_KEYWORDS([ingress_policing])
 OVS_CHECK_TC_QDISC()
@@ -106,11 +141,10 @@ AT_CHECK([ovs-vsctl set interface ovs-p0 ingress_policing_burst=10])
 AT_CHECK([ovs-vsctl --columns=other_config list open], [0], [dnl
 other_config        : {hw-offload="false"}
 ])
+m4_define([POLICE_CONF], [rate 100Kbit burst 1...b])
 AT_CHECK([tc -o -s -d filter show dev ovs-p0 ingress |
-  sed -n 's/.*\(rate [[0-9]]*[[a-zA-Z]]* burst [[0-9]]*[[a-zA-Z]]*\).*/\1/; T; p; q'],
-  [0],[dnl
-rate 100Kbit burst 1280b
-])
+  sed -n 's/.*\(rate [[0-9]]*[[a-zA-Z]]* burst [[0-9]]*[[a-zA-Z]]*\).*/\1/; T; p; q' |
+  grep -q 'POLICE_CONF'])
 AT_CHECK([tc -s -d filter show dev ovs-p0 ingress |
   grep -E "basic|matchall" > /dev/null], [0])
 OVS_TRAFFIC_VSWITCHD_STOP
@@ -128,11 +162,10 @@ AT_CHECK([ovs-vsctl set interface ovs-p0 ingress_policing_burst=10])
 AT_CHECK([ovs-vsctl --columns=other_config list open], [0], [dnl
 other_config        : {hw-offload="true"}
 ])
+m4_define([POLICE_CONF], [rate 100Kbit burst 1...b])
 AT_CHECK([tc -o -s -d filter show dev ovs-p0 ingress |
-  sed -n 's/.*\(rate [[0-9]]*[[a-zA-Z]]* burst [[0-9]]*[[a-zA-Z]]*\).*/\1/; T; p; q'],
-  [0],[dnl
-rate 100Kbit burst 1280b
-])
+  sed -n 's/.*\(rate [[0-9]]*[[a-zA-Z]]* burst [[0-9]]*[[a-zA-Z]]*\).*/\1/; T; p; q' |
+  grep -q 'POLICE_CONF'])
 AT_CHECK([tc -o -s -d filter show dev ovs-p0 ingress | grep matchall |
   sed -n 's/.*\(matchall\).*/\1/; T; p; q'], [0], [dnl
 matchall
@@ -1003,7 +1036,7 @@ AT_CHECK(
   [grep -q -F "set(tunnel(dst=172.31.1.1,ttl=64,tp_dst=4789,flags(df)))" \
    stdout])
 AT_CHECK(
-  [grep -q -F "tunnel(tun_id=0x0,src=172.31.1.1,dst=172.31.1.100,tp_dst=4789,flags(-df+csum+key))" \
+  [grep -q -F "tunnel(tun_id=0x0,src=172.31.1.1,dst=172.31.1.100,tp_dst=4789,flags(+key))" \
    stdout])
 
 # Now verify the none df, and forced csum case.
@@ -1163,6 +1196,52 @@ check_rules_and_ping() {
 OVS_WAIT_WHILE(
   [check_rules_and_ping],
   [ovs-appctl dpctl/dump-flows -m --names filter='in_port(ovs-p1),ipv4'])
+
+OVS_TRAFFIC_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([offloads - ovs-appctl dpif/offload/show - offloads enabled])
+AT_KEYWORDS([dpif-offload])
+OVS_TRAFFIC_VSWITCHD_START([], [],
+  [-- set Open_vSwitch . other_config:hw-offload=true])
+
+sort_dpif_offload_show () {
+    awk '
+        /^  -/ { dashlines[[++n]] = $0; next }
+        { print }
+        END {
+            asort(dashlines)
+            for (i=1; i<=n; i++) print dashlines[[i]]
+        }
+    ' | sed -E 's/ifindex: [[0-9]]+/ifindex: 0/g'
+}
+
+AT_CHECK([ovs-appctl dpif/offload/show | sort_dpif_offload_show], [0], [dnl
+Globally enabled: true
+Datapaths:
+system@ovs-system:
+  tc
+  - br0: port_no: 1, ifindex: 0
+  - ovs-system: port_no: 0, ifindex: 0
+])
+
+AT_CHECK([ovs-appctl --format json --pretty dpif/offload/show \
+            | sed -E 's/"ifindex": [[0-9]]+/"ifindex": 0/g'], [0], [dnl
+{
+  "enabled": true,
+  "system@ovs-system": {
+    "priority": [[
+      "tc"]],
+    "providers": {
+      "tc": {
+        "ports": {
+          "br0": {
+            "ifindex": 0,
+            "port_no": 1},
+          "ovs-system": {
+            "ifindex": 0,
+            "port_no": 0}}}}}}
+])
 
 OVS_TRAFFIC_VSWITCHD_STOP
 AT_CLEANUP

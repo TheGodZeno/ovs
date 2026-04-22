@@ -52,6 +52,7 @@
 #include "dp-packet.h"
 #include "dpif-netlink.h"
 #include "dpif-netdev.h"
+#include "dpif-offload.h"
 #include "openvswitch/dynamic-string.h"
 #include "fatal-signal.h"
 #include "hash.h"
@@ -93,8 +94,8 @@ COVERAGE_DEFINE(netdev_linux_invalid_l4_csum);
 COVERAGE_DEFINE(netdev_linux_unknown_l4_csum);
 
 
-#ifndef IFLA_IF_NETNSID
-#define IFLA_IF_NETNSID 0x45
+#ifndef HAVE_IFLA_IF_NETNSID
+#define IFLA_IF_NETNSID 46
 #endif
 /* These were introduced in Linux 2.6.14, so they might be missing if we have
  * old headers. */
@@ -175,6 +176,14 @@ static inline uint32_t rpl_ethtool_cmd_speed(const struct ethtool_cmd *ep)
 #define ADVERTISED_10000baseR_FEC      (1 << 20)
 #endif
 
+/* Linux 3.2 introduced "unknown" speed and duplex. */
+#ifndef SPEED_UNKNOWN
+#define SPEED_UNKNOWN -1
+#endif
+#ifndef DUPLEX_UNKNOWN
+#define DUPLEX_UNKNOWN 0xff
+#endif
+
 /* Linux 3.5 introduced supported and advertised flags for
  * 40G base KR4, CR4, SR4 and LR4. */
 #ifndef SUPPORTED_40000baseKR4_Full
@@ -186,6 +195,16 @@ static inline uint32_t rpl_ethtool_cmd_speed(const struct ethtool_cmd *ep)
 #define ADVERTISED_40000baseCR4_Full   (1 << 24)
 #define ADVERTISED_40000baseSR4_Full   (1 << 25)
 #define ADVERTISED_40000baseLR4_Full   (1 << 26)
+#endif
+
+/* Linux 3.19 introduced speed for 40G. */
+#ifndef SPEED_40000
+#define SPEED_40000 40000
+#endif
+
+/* Linux 4.2 introduced speed for 100G. */
+#ifndef SPEED_100000
+#define SPEED_100000 100000
 #endif
 
 /* Linux 2.6.35 introduced IFLA_STATS64 and rtnl_link_stats64.
@@ -942,6 +961,9 @@ netdev_linux_common_construct(struct netdev *netdev_)
         VLOG_WARN_RL(&rll, "%s: Linux forbids network device with this name",
                      name);
         return EINVAL;
+    }
+    if (strlen(name) >= IFNAMSIZ) {
+        return ENAMETOOLONG;
     }
 
     /* The device could be in the same network namespace or in another one. */
@@ -2673,15 +2695,19 @@ netdev_linux_read_features(struct netdev_linux *netdev)
         netdev->current = ecmd.duplex ? NETDEV_F_1GB_FD : NETDEV_F_1GB_HD;
     } else if (netdev->current_speed == SPEED_10000) {
         netdev->current = NETDEV_F_10GB_FD;
-    } else if (netdev->current_speed == 40000) {
+    } else if (netdev->current_speed == SPEED_40000) {
         netdev->current = NETDEV_F_40GB_FD;
-    } else if (netdev->current_speed == 100000) {
+    } else if (netdev->current_speed == SPEED_100000) {
         netdev->current = NETDEV_F_100GB_FD;
     } else if (netdev->current_speed == 1000000) {
         netdev->current = NETDEV_F_1TB_FD;
+    } else if (netdev->current_speed
+               && netdev->current_speed != SPEED_UNKNOWN) {
+        netdev->current = NETDEV_F_OTHER;
     } else {
         netdev->current = 0;
     }
+    netdev->current_duplex = ecmd.duplex;
 
     if (ecmd.port == PORT_TP) {
         netdev->current |= NETDEV_F_COPPER;
@@ -2763,6 +2789,32 @@ netdev_linux_get_speed(const struct netdev *netdev_, uint32_t *current,
     error = netdev_linux_get_speed_locked(netdev, current, max);
     ovs_mutex_unlock(&netdev->mutex);
     return error;
+}
+
+static int
+netdev_linux_get_duplex(const struct netdev *netdev_, bool *full_duplex)
+{
+    struct netdev_linux *netdev = netdev_linux_cast(netdev_);
+    int err;
+
+    ovs_mutex_lock(&netdev->mutex);
+
+    if (netdev_linux_netnsid_is_remote(netdev)) {
+        err = EOPNOTSUPP;
+        goto exit;
+    }
+
+    netdev_linux_read_features(netdev);
+    err = netdev->get_features_error;
+    if (!err && netdev->current_duplex == DUPLEX_UNKNOWN) {
+        err = EOPNOTSUPP;
+        goto exit;
+    }
+    *full_duplex = netdev->current_duplex == DUPLEX_FULL;
+
+exit:
+    ovs_mutex_unlock(&netdev->mutex);
+    return err;
 }
 
 /* Set the features advertised by 'netdev' to 'advertise'. */
@@ -3017,7 +3069,7 @@ netdev_linux_set_policing(struct netdev *netdev_, uint32_t kbits_rate,
     COVERAGE_INC(netdev_set_policing);
 
     /* Use matchall for policing when offloadling ovs with tc-flower. */
-    if (netdev_is_flow_api_enabled()) {
+    if (dpif_offload_enabled()) {
         error = tc_del_matchall_policer(netdev_);
         if (kbits_rate || kpkts_rate) {
             error = tc_add_matchall_policer(netdev_, kbits_rate, kbits_burst,
@@ -3889,6 +3941,7 @@ const struct netdev_class netdev_linux_class = {
     .get_stats = netdev_linux_get_stats,
     .get_features = netdev_linux_get_features,
     .get_speed = netdev_linux_get_speed,
+    .get_duplex = netdev_linux_get_duplex,
     .get_status = netdev_linux_get_status,
     .get_block_id = netdev_linux_get_block_id,
     .send = netdev_linux_send,
@@ -3906,6 +3959,7 @@ const struct netdev_class netdev_tap_class = {
     .get_stats = netdev_tap_get_stats,
     .get_features = netdev_linux_get_features,
     .get_speed = netdev_linux_get_speed,
+    .get_duplex = netdev_linux_get_duplex,
     .get_status = netdev_linux_get_status,
     .send = netdev_linux_send,
     .rxq_construct = netdev_linux_rxq_construct,

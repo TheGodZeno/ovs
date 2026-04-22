@@ -11,6 +11,7 @@ appveyor
 arg
 arp
 asan
+atexit
 attr
 backport
 backtrace
@@ -48,6 +49,7 @@ defragment
 deref
 dereference
 dest
+detrace
 dhcp
 dhcpv4
 dhcpv6
@@ -153,6 +155,7 @@ megabytes
 megaflow
 megaflows
 memcmp
+memcpy
 mempool
 mempools
 memset
@@ -186,15 +189,18 @@ nsec
 num
 numa
 odp
+odputil
 ofctl
 ofpbuf
 ofpbufs
 ofport
 ofproto
+onwards
 openflow
 openssl
 openvswitch
 opts
+oversized
 ovs
 ovs-ctl
 ovsdb
@@ -210,6 +216,7 @@ pkts
 pmd
 pmds
 policer
+pos
 ppid
 pps
 pre
@@ -218,6 +225,7 @@ promisc
 qdisc
 qos
 qsort
+rconn
 rculist
 rebalance
 rebased
@@ -290,6 +298,7 @@ unassociated
 unclosed
 unicast
 unixctl
+untrusted
 upcall
 upcalls
 us

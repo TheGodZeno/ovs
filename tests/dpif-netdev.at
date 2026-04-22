@@ -37,15 +37,17 @@ filter_flow_install () {
 }
 
 filter_hw_flow_install () {
-    grep 'netdev_dummy.*flow put\[create\]' | sed 's/.*|DBG|//' | sort | uniq
+    grep 'dpif_offload_dummy.*flow put\[create\]' | sed 's/.*|DBG|//' | sort \
+        | uniq
 }
 
 filter_hw_flow_del () {
-    grep 'netdev_dummy.*flow del' | sed 's/.*|DBG|//' | sort | uniq
+    grep 'dpif_offload_dummy.*flow del' | sed 's/.*|DBG|//' | sort | uniq
 }
 
 filter_hw_packet_netdev_dummy () {
-    grep 'netdev_dummy.*: packet:.*with mark' | sed 's/.*|DBG|//' | sort | uniq
+    grep 'dpif_offload_dummy.*: packet:.*with mark' | sed 's/.*|DBG|//' \
+        | sort | uniq
 }
 
 filter_flow_dump () {
@@ -411,10 +413,10 @@ m4_define([DPIF_NETDEV_FLOW_HW_OFFLOAD],
       set bridge br0 datapath-type=dummy \
                      other-config:datapath-id=1234 fail-mode=secure], [], [],
       [m4_if([$1], [dummy-pmd], [--dummy-numa="0,0,0,0,1,1,1,1"], [])])
-   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg netdev_dummy:file:dbg])
+   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg dpif_offload_dummy:file:dbg])
 
    AT_CHECK([ovs-vsctl set Open_vSwitch . other_config:hw-offload=true])
-   OVS_WAIT_UNTIL([grep "netdev: Flow API Enabled" ovs-vswitchd.log])
+   OVS_WAIT_UNTIL([grep "Flow HW offload is enabled" ovs-vswitchd.log])
 
    AT_CHECK([ovs-ofctl del-flows br0])
    AT_CHECK([ovs-ofctl add-flow br0 in_port=1,actions=IN_PORT])
@@ -459,12 +461,17 @@ recirc_id(0),in_port(1),packet_type(ns=0,id=0),eth_type(0x0800),ipv4(frag=no), p
    AT_CHECK([filter_hw_flow_del < ovs-vswitchd.log | strip_xout], [0], [dnl
 p1: flow del: mark: 1
 ])
+
+   # Check if partial hw offload was hit in dpif-netdev.
+   m4_if([$1], [dummy-pmd],
+         [AT_CHECK([ovs-appctl dpif-netdev/pmd-perf-show \
+                    | grep -q "PHWOL hits:                  1"])])
+
    OVS_VSWITCHD_STOP
    AT_CLEANUP])
 
 DPIF_NETDEV_FLOW_HW_OFFLOAD([dummy])
 DPIF_NETDEV_FLOW_HW_OFFLOAD([dummy-pmd])
-
 
 m4_define([DPIF_NETDEV_FLOW_HW_OFFLOAD_OFFSETS],
   [AT_SETUP([dpif-netdev - partial hw offload with packet modifications - $1])
@@ -474,10 +481,10 @@ m4_define([DPIF_NETDEV_FLOW_HW_OFFLOAD_OFFSETS],
       set bridge br0 datapath-type=dummy \
                      other-config:datapath-id=1234 fail-mode=secure], [], [],
       [m4_if([$1], [dummy-pmd], [--dummy-numa="0,0,0,0,1,1,1,1"], [])])
-   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg netdev_dummy:file:dbg])
+   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg dpif_offload_dummy:file:dbg])
 
    AT_CHECK([ovs-vsctl set Open_vSwitch . other_config:hw-offload=true])
-   OVS_WAIT_UNTIL([grep "netdev: Flow API Enabled" ovs-vswitchd.log])
+   OVS_WAIT_UNTIL([grep "Flow HW offload is enabled" ovs-vswitchd.log])
 
    AT_CHECK([ovs-ofctl del-flows br0])
 
@@ -537,6 +544,11 @@ udp,in_port=ANY,dl_vlan=99,dl_vlan_pcp=7,vlan_tci1=0x0000,dl_src=00:06:07:08:09:
 udp,in_port=ANY,dl_vlan=99,dl_vlan_pcp=7,vlan_tci1=0x0000,dl_src=00:06:07:08:09:0a,dl_dst=00:01:02:03:04:05,nw_src=192.168.0.7,nw_dst=127.0.0.1,nw_tos=0,nw_ecn=0,nw_ttl=64,nw_frag=no,tp_src=81,tp_dst=3773
 ])
 
+   # Check if partial hw offload was hit in dpif-netdev.
+   m4_if([$1], [dummy-pmd],
+         [AT_CHECK([ovs-appctl dpif-netdev/pmd-perf-show \
+                    | grep -q "PHWOL hits:                  1"])])
+
    OVS_VSWITCHD_STOP
    AT_CLEANUP])
 
@@ -551,10 +563,10 @@ m4_define([DPIF_NETDEV_FLOW_HW_OFFLOAD_OFFSETS_VID_ARP],
       set bridge br0 datapath-type=dummy \
                      other-config:datapath-id=1234 fail-mode=secure], [], [],
       [m4_if([$1], [dummy-pmd], [--dummy-numa="0,0,0,0,1,1,1,1"], [])])
-   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg netdev_dummy:file:dbg])
+   AT_CHECK([ovs-appctl vlog/set dpif:file:dbg dpif_netdev:file:dbg dpif_offload_dummy:file:dbg])
 
    AT_CHECK([ovs-vsctl set Open_vSwitch . other_config:hw-offload=true])
-   OVS_WAIT_UNTIL([grep "netdev: Flow API Enabled" ovs-vswitchd.log])
+   OVS_WAIT_UNTIL([grep "Flow HW offload is enabled" ovs-vswitchd.log])
 
    AT_CHECK([ovs-ofctl del-flows br0])
 
@@ -613,6 +625,11 @@ arp,in_port=ANY,dl_vlan=11,dl_vlan_pcp=7,vlan_tci1=0x0000,dl_src=00:06:07:08:09:
 arp,in_port=ANY,dl_vlan=99,dl_vlan_pcp=7,vlan_tci1=0x0000,dl_src=00:06:07:08:09:0a,dl_dst=00:01:02:03:04:05,arp_spa=127.0.0.1,arp_tpa=127.0.0.1,arp_op=1,arp_sha=00:0b:0c:0d:0e:0f,arp_tha=00:00:00:00:00:00
 arp,in_port=ANY,dl_vlan=11,dl_vlan_pcp=7,vlan_tci1=0x0000,dl_src=00:06:07:08:09:0a,dl_dst=00:01:02:03:04:05,arp_spa=127.0.0.1,arp_tpa=127.0.0.1,arp_op=1,arp_sha=00:0b:0c:0d:0e:0f,arp_tha=00:00:00:00:00:00
 ])
+
+   # Check if partial hw offload was hit in dpif-netdev.
+   m4_if([$1], [dummy-pmd],
+         [AT_CHECK([ovs-appctl dpif-netdev/pmd-perf-show \
+                    | grep -q "PHWOL hits:                  1"])])
 
    OVS_VSWITCHD_STOP
    AT_CLEANUP])
@@ -736,7 +753,45 @@ AT_CHECK([test `ovs-vsctl get Interface p2 statistics:tx_q0_packets` -gt 0 -a dn
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - ip csum offload])
+m4_define([CHECK_FWD_PACKET],
+  [m4_if([$3], [], [], [AT_CHECK([ovs-vsctl set interface $1 options:$3=true])])
+   AT_CHECK([ovs-appctl netdev-dummy/receive $1 $(cat $4)])
+   m4_if([$5], [none], [], [
+     AT_CHECK([awk 1 $5 > expout]) dnl Also normalizes the line endings.
+     AT_CHECK([ovs-pcap $2.pcap > $2.pcap.txt 2>&1])
+     AT_CHECK([tail -n 1 $2.pcap.txt], [0], [expout])
+   ])
+   m4_if([$3], [], [], [AT_CHECK([ovs-vsctl remove interface $1 options $3])])
+])
+
+dnl CHECK_IP_CHECKSUMS rx_port tx_port good_pkt bad_pkt good_exp bad_exp
+dnl
+dnl Test combinations of Rx IP checksum flags for a good or bad packet
+dnl received on rx_port, and sent over tx_port.
+m4_define([CHECK_IP_CHECKSUMS],
+  [dnl Checks for good packet.
+   dnl No Rx flag.
+   CHECK_FWD_PACKET($1, $2, , $3, $5)
+   dnl Rx good.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_good, $3, $5)
+   dnl Rx bad.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_bad, $3, $5)
+   dnl Rx partial.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_partial, $3, $5)
+
+   dnl Checks for bad packet.
+   dnl No Rx flag.
+   CHECK_FWD_PACKET($1, $2, , $4, $6)
+   dnl Rx good.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_good, $4, $5)
+   dnl Rx bad.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_bad, $4, $6)
+   dnl Rx partial.
+   CHECK_FWD_PACKET($1, $2, ol_ip_rx_csum_set_partial, $4, $5)
+])
+
+AT_SETUP([dpif-netdev - ip csum offload])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -746,6 +801,8 @@ OVS_VSWITCHD_START(
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
 
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
 dnl Modify the ip_dst addr to force changing the IP csum.
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=mod_nw_dst:192.168.1.1,output:p2])
 
@@ -754,160 +811,33 @@ flow_s="\
   tcp,ip_src=192.168.123.2,ip_dst=192.168.123.1,ip_frag=no,\
   tcp_src=54392,tcp_dst=5201,tcp_flags=ack"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/192.168.123.1/192.168.1.1/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
+AT_CHECK([ovs-ofctl compose-packet --bare --bad-csum "${flow_s}" > bad_frame])
+AT_CHECK([ovs-ofctl compose-packet --bare --bad-csum "${flow_expected}" > bad_expected])
 
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
+dnl Tx offloads disabled.
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(ovs-ofctl compose-packet --bare --bad-csum "${flow_s}")
-bad_expected=$(ovs-ofctl compose-packet --bare --bad-csum "${flow_expected}")
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-dnl In this case, datapath will fix the csum as it trusts the Rx status.
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
-
-dnl Checks for good packet (Tx offloads enabled).
+dnl Tx offloads enabled.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads enabled).
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-dnl In this case, datapath will fix the csum as it trusts the Rx status.
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
 dnl Special case, to check if Tx offload did happen in the driver.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=true])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
 
 dnl The bad IP checksum is left untouched but the IP address and the TCP.
 dnl checksum got updated.
-first_part_bad=$(echo $bad_frame | sed -ne "s/^\(.*\)c0a87b02c0a87b01.*$/\1/p")
-second_part_good=$(echo $good_expected | sed -ne "s/^.*\(c0a87b02c0a80101.*$\)/\1/p")
+first_part_bad=$(cat bad_frame | sed -ne "s/^\(.*\)c0a87b02c0a87b01.*$/\1/p")
+second_part_good=$(cat good_expected | sed -ne "s/^.*\(c0a87b02c0a80101.*$\)/\1/p")
+echo ${first_part_bad}${second_part_good} > composed_expected
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [composed_expected])
 
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${first_part_bad}${second_part_good}
-])
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=false])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum_disabled])
 
 dnl Test with IP optional fields in a valid packet.  Note that neither this
 dnl packet nor the following one contain a correct checksum.  OVS is
@@ -930,7 +860,6 @@ dnl eth(dst=aa:aa:aa:aa:aa:aa,src=bb:bb:bb:bb:bb:bb,type=0x0800)
 dnl ipv4(dst=10.0.0.2,src=10.0.0.1,proto=1,len=60,tot_len=68,csum=0xeeee)
 [4f000044abab00004001eeee0a0000010a000002]))
 
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
 AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
 AT_CHECK([ovs-appctl netdev-dummy/receive p1 OPT_PKT])
 AT_CHECK([ovs-appctl netdev-dummy/receive p1 MICROGRAM])
@@ -946,7 +875,34 @@ AT_CHECK([tail -n 2 p2.pcap.txt], [0], [expout])
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - tcp csum offload])
+dnl CHECK_L4_CHECKSUMS rx_port tx_port good_pkt bad_pkt good_exp bad_exp
+dnl
+dnl Test combinations of Rx L4 checksum flags for a good or bad packet
+dnl received on rx_port, and sent over tx_port.
+m4_define([CHECK_L4_CHECKSUMS],
+  [dnl Checks for good packet.
+   dnl No Rx flag.
+   CHECK_FWD_PACKET($1, $2, , $3, $5)
+   dnl Rx good.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_good, $3, $5)
+   dnl Rx bad.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_bad, $3, $5)
+   dnl Rx partial.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_partial, $3, $5)
+
+   dnl Checks for bad packet.
+   dnl No Rx flag.
+   CHECK_FWD_PACKET($1, $2, , $4, $6)
+   dnl Rx good.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_good, $4, $5)
+   dnl Rx bad.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_bad, $4, $6)
+   dnl Rx partial.
+   CHECK_FWD_PACKET($1, $2, ol_l4_rx_csum_set_partial, $4, $5)
+])
+
+AT_SETUP([dpif-netdev - tcp csum offload])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -955,6 +911,8 @@ OVS_VSWITCHD_START(
        set Interface p2 type=dummy --])
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
 
 dnl Modify the tcp_dst port to force changing the TCP csum.
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp,actions=mod_tp_dst:2222,output:p2])
@@ -964,163 +922,40 @@ flow_s="\
   tcp,ip_src=192.168.123.2,ip_dst=192.168.123.1,ip_frag=no,\
   tcp_src=54392,tcp_dst=5201,tcp_flags=ack"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/5201/2222/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(echo $good_frame | sed -e "s/6b72/dead/")
+AT_CHECK([cat good_frame | sed -e "s/6b72/dead/" > bad_frame])
 dnl 0x6b72 + (5201-2222) == 0x7715
 dnl 0xdead + (5201-2222) == 0xea50
-bad_expected=$(echo $good_expected | sed -e "s/7715/ea50/")
+AT_CHECK([cat good_expected | sed -e "s/7715/ea50/" > bad_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for good packet (Tx offloads enabled).
+dnl Tx offloads enabled.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads enabled).
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
 dnl Special case, to check if Tx offload did happen in the driver.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
 
 dnl The bad TCP checksum is left untouched.
-bad_updated=$(echo $good_expected | sed -e "s/7715/dead/")
+AT_CHECK([cat good_expected | sed -e "s/7715/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
 
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_updated}
-])
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=false])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
 
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - tcp csum offload (simple match)])
+AT_SETUP([dpif-netdev - tcp csum offload (simple match)])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -1129,6 +964,8 @@ OVS_VSWITCHD_START(
        set Interface p2 type=dummy --])
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
 
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=output:p2])
 
@@ -1137,58 +974,35 @@ flow_s="\
   tcp,ip_src=192.168.123.2,ip_dst=192.168.123.1,ip_frag=no,\
   tcp_src=54392,tcp_dst=5201,tcp_flags=ack"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
-bad_frame=$(echo $good_frame | sed -e "s/6b72/dead/")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
+AT_CHECK([cat good_frame | sed -e "s/6b72/dead/" > bad_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_frame}
-])
+CHECK_FWD_PACKET(p1, p2, , [bad_frame], [bad_frame])
 dnl First packet, no simple matching.
 AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0], [dnl
   simple match hits: 0
 ])
 
 dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_frame}
-])
+CHECK_FWD_PACKET(p1, p2, , [bad_frame], [bad_frame])
 AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0], [dnl
   simple match hits: 1
 ])
 
 dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_frame}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_frame])
 AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0], [dnl
   simple match hits: 2
 ])
 
 dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_frame}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_bad, [bad_frame], [bad_frame])
 AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0], [dnl
   simple match hits: 3
 ])
 
 dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_frame}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_partial, [bad_frame], [good_frame])
 AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0], [dnl
   simple match hits: 4
 ])
@@ -1196,7 +1010,8 @@ AT_CHECK([ovs-appctl dpif-netdev/pmd-stats-show | grep 'simple match hits'], [0]
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - udp csum offload])
+AT_SETUP([dpif-netdev - udp csum offload])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -1205,6 +1020,8 @@ OVS_VSWITCHD_START(
        set Interface p2 type=dummy --])
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
 
 dnl Modify the udp_dst port to force changing the UDP csum.
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp,actions=mod_tp_dst:2222,output:p2])
@@ -1214,163 +1031,40 @@ flow_s="\
   udp,ip_src=192.168.123.2,ip_dst=192.168.123.1,ip_frag=no,\
   udp_src=54392,udp_dst=5201"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/5201/2222/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(echo $good_frame | sed -e "s/bb3b/dead/")
+AT_CHECK([cat good_frame | sed -e "s/bb3b/dead/" > bad_frame])
 dnl 0xbb3b + (5201-2222) == 0xc6de
 dnl 0xdead + (5201-2222) == 0xea50
-bad_expected=$(echo $good_expected | sed -e "s/c6de/ea50/")
+AT_CHECK([cat good_expected | sed -e "s/c6de/ea50/" > bad_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for good packet (Tx offloads enabled).
+dnl Tx offloads enabled.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads enabled).
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
 dnl Special case, to check if Tx offload did happen in the driver.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
 
 dnl The bad UDP checksum is left untouched.
-bad_updated=$(echo $good_expected | sed -e "s/c6de/dead/")
+AT_CHECK([cat good_expected | sed -e "s/c6de/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
 
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_updated}
-])
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=false])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
 
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - IPv6 tcp csum offload])
+AT_SETUP([dpif-netdev - IPv6 tcp csum offload])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -1379,6 +1073,8 @@ OVS_VSWITCHD_START(
        set Interface p2 type=dummy --])
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
 
 dnl Modify the tcp_dst port to force changing the TCP csum.
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp6,actions=mod_tp_dst:2222,output:p2])
@@ -1388,163 +1084,40 @@ flow_s="\
   tcp6,ipv6_src=fe80::2,ipv6_dst=fe80::1,\
   tcp_src=54392,tcp_dst=5201,tcp_flags=ack"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/5201/2222/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(echo $good_frame | sed -e "s/e5c2/dead/")
+AT_CHECK([cat good_frame | sed -e "s/e5c2/dead/" > bad_frame])
 dnl 0xe5c2 + (5201-2222) == 0xf165
 dnl 0xdead + (5201-2222) == 0xea50
-bad_expected=$(echo $good_expected | sed -e "s/f165/ea50/")
+AT_CHECK([cat good_expected | sed -e "s/f165/ea50/" > bad_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for good packet (Tx offloads enabled).
+dnl Tx offloads enabled.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads enabled).
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
 dnl Special case, to check if Tx offload did happen in the driver.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
 
 dnl The bad TCP checksum is left untouched.
-bad_updated=$(echo $good_expected | sed -e "s/f165/dead/")
+AT_CHECK([cat good_expected | sed -e "s/f165/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
 
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_updated}
-])
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=false])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
 
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - IPv6 udp csum offload])
+AT_SETUP([dpif-netdev - IPv6 udp csum offload])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -1554,6 +1127,8 @@ OVS_VSWITCHD_START(
 
 AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
 
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
 dnl Modify the udp_dst port to force changing the UDP csum.
 AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp6,actions=mod_tp_dst:2222,output:p2])
 
@@ -1562,163 +1137,1774 @@ flow_s="\
   udp6,ipv6_src=fe80::2,ipv6_dst=fe80::1,\
   udp_src=54392,udp_dst=5201"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
-AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
-
-dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/5201/2222/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(echo $good_frame | sed -e "s/358c/dead/")
+AT_CHECK([cat good_frame | sed -e "s/358c/dead/" > bad_frame])
 dnl 0x358c + (5201-2222) == 0x412f
 dnl 0xdead + (5201-2222) == 0xea50
-bad_expected=$(echo $good_expected | sed -e "s/412f/ea50/")
+AT_CHECK([cat good_expected | sed -e "s/412f/ea50/" > bad_expected])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for good packet (Tx offloads enabled).
+dnl Tx offloads enabled.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
 
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
-
-dnl Checks for bad packet (Tx offloads enabled).
-
-dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-
-dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
-
-dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_bad=false])
-
-dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_partial=false])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
 
 dnl Special case, to check if Tx offload did happen in the driver.
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
 
 dnl The bad UDP checksum is left untouched.
-bad_updated=$(echo $good_expected | sed -e "s/412f/dead/")
+AT_CHECK([cat good_expected | sed -e "s/412f/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
 
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${bad_updated}
-])
-AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=false])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
 
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - conntrack])
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - no offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=mod_nw_dst:192.168.1.1,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+dnl Simple ARP.
+AT_DATA([arp_frame], m4_join([],
+dnl p = Ether(dst='ff:ff:ff:ff:ff:ff')
+[ffffffffffff04bf1bd82d2d0806],
+dnl p /= ARP(pdst='192.168.123.1', hwsrc='8a:bf:7e:2f:05:84')
+[00010800060400018abf7e2f0584c0a80111000000000000c0a87b01]
+))
+
+AT_DATA([arp_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500004e00004000401133ea010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5003a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(dst='ff:ff:ff:ff:ff:ff')
+[ffffffffffff04bf1bd82d2d0806],
+dnl p /= ARP(pdst='192.168.123.1', hwsrc='8a:bf:7e:2f:05:84')
+[00010800060400018abf7e2f0584c0a80111000000000000c0a87b01]
+))
+
+dnl ICMPv6.
+AT_DATA([ndp_frame], m4_join([],
+dnl p = Ether(src='04:bf:1b:d8:2d:2d', dst='33:33:ff:00:00:01')
+[3333ff00000104bf1bd82d2d86dd],
+dnl p /= IPv6(src='fe80::2', dst='ff02::1:ff00:1')
+[6000000000203afffe800000000000000000000000000002ff0200000000000000000001ff000001],
+dnl p /= ICMPv6ND_NS(type=135, tgt='fe80::1')
+[87006e2600000000fe800000000000000000000000000001],
+dnl p /= ICMPv6NDOptSrcLLAddr(lladdr='8a:bf:7e:2f:05:84')
+[01018abf7e2f0584]
+))
+
+AT_DATA([ndp_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500007a00004000401133be010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500660000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='04:bf:1b:d8:2d:2d', dst='33:33:ff:00:00:01')
+[3333ff00000104bf1bd82d2d86dd],
+dnl p /= IPv6(src='fe80::2', dst='ff02::1:ff00:1')
+[6000000000203afffe800000000000000000000000000002ff0200000000000000000001ff000001],
+dnl p /= ICMPv6ND_NS(type=135, tgt='fe80::1')
+[87006e2600000000fe800000000000000000000000000001],
+dnl p /= ICMPv6NDOptSrcLLAddr(lladdr='8a:bf:7e:2f:05:84')
+[01018abf7e2f0584]
+))
+
+CHECK_FWD_PACKET(p1, p2, , [arp_frame], [arp_expected])
+CHECK_FWD_PACKET(p1, p2, , [ndp_frame], [ndp_expected])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat arp_expected | sed -e 's/e01312b5003a0000/e01312b5003a1354/' > arp_csum_expected])
+AT_CHECK([cat ndp_expected | sed -e 's/e01312b500660000/e01312b50066e106/' > ndp_csum_expected])
+
+CHECK_FWD_PACKET(p1, p2, , [arp_frame], [arp_csum_expected])
+CHECK_FWD_PACKET(p1, p2, , [ndp_frame], [ndp_csum_expected])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - ip csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=mod_nw_dst:192.168.1.1,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d47814510000000000000000501000006b720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500009a000040004011339e010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500860000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.1.1', id=0, ttl=0)
+[45000068000000000006bd3cc0a87b02c0a80101],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d4781451000000000000000050100000e5720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/433c/423c/" > bad_frame])
+AT_CHECK([cat good_expected | sed -e "s/bd3c/bc3c/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/339e/0000/" | sed -e "s/bd3c/423c/" > half_bad_expected])
+
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum])
+
+AT_CHECK([cat good_expected | sed -e "s/bd3c/423c/" > half_bad_expected])
+
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e "s/e01312b500860000/e01312b50086454d/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b500860000/e01312b50086464d/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/339e/0000/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+dnl Special case 2, to check if Tx offloads did happen in the driver
+dnl with the outer UDP optimisation.
+dnl A valid inner L4 checksum is required for the optimisation to trigger.
+AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/339e/0000/" -e "s/bd3c/423c/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p1 options ol_l4_rx_csum_set_good])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum_disabled])
+
+dnl Special case 3, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum])
+
+dnl The inner part will be fixed by datapath.
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [good_csum_expected])
+
+dnl Special case 4, to check if Tx offloads did happen in the driver
+dnl with the outer UDP optimisation.
+dnl A valid inner L4 checksum is required for the optimisation to trigger.
+AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/bd3c/423c/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p1 options ol_l4_rx_csum_set_good])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - tcp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d47814510000000000000000501000006b720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500009a000040004011339e010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500860000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=2222, flags='A', window=0)
+[d47808ae00000000000000005010000077150000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/6b72/dead/" > bad_frame])
+dnl 0x6b72 + (5201-2222) == 0x7715
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/7715/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/7715/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e "s/e01312b500860000/e01312b50086bf4d/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b500860000/e01312b500864c12/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/bf4d/ffff/" -e "s/7715/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/7715/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - udp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([no_csum_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=5201, chksum=0)
+[d478145100480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([no_csum_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500008e00004000401133aa010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5007a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=2222, chksum=0)
+[d47808ae00480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=5201)
+[d47814510048bb3b],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[4500008e00004000401133aa010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5007a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=2222)
+[d47808ae0048c6de],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/bb3b/dead/" > bad_frame])
+dnl 0xbb3b + (5201-2222) == 0xc6de
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/c6de/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/c6de/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat no_csum_expected | sed -e 's/e01312b5007a0000/e01312b5007a8643/' > out_no_csum_expected])
+AT_CHECK([cat good_expected | sed -e 's/e01312b5007a0000/e01312b5007abf64/' > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e 's/e01312b5007a0000/e01312b5007a9bf2/' > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/bf64/ffff/" -e "s/c6de/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/c6de/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - IPv6 tcp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp6,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000540640fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d4781451000000000000000050100000e5c20000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[450000ae000040004011338a010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5009a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000540640fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= TCP(sport=54392, dport=2222, flags='A', window=0)
+[d47808ae000000000000000050100000f1650000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/e5c2/dead/" > bad_frame])
+dnl 0xe5c2 + (5201-2222) == 0xf165
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/f165/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/f165/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e 's/e01312b5009a0000/e01312b5009a625e/' > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e 's/e01312b5009a0000/e01312b5009a6973/' > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/625e/ffff/" -e "s/f165/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/f165/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv4 vxlan tunnel - IPv6 udp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=1.1.2.92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp6,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip4addr br2 1.1.2.88/24], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 1.1.2.92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([no_csum_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=5201, chksum=0)
+[d478145100480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([no_csum_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[450000a20000400040113396010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5008e0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=2222, chksum=0)
+[d47808ae00480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=5201)
+[d47814510048358c],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa6600000800],
+dnl p /= IP(src='1.1.2.88', dst='1.1.2.92', id=0, flags='DF')
+[450000a20000400040113396010102580101025c],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5008e0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=2222)
+[d47808ae0048412f],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/358c/dead/" > bad_frame])
+dnl 0x358c + (5201-2222) == 0x412f
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/412f/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/412f/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat no_csum_expected | sed -e "s/e01312b5008e0000/e01312b5008e98b0/" > out_no_csum_expected])
+AT_CHECK([cat good_expected | sed -e 's/e01312b5008e0000/e01312b5008e5781/' > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e 's/e01312b5008e0000/e01312b5008eae5f/' > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/5781/ffff/" -e "s/412f/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/412f/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - no offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=mod_nw_dst:192.168.1.1,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+dnl Simple ARP.
+AT_DATA([arp_frame], m4_join([],
+dnl p = Ether(dst='ff:ff:ff:ff:ff:ff')
+[ffffffffffff04bf1bd82d2d0806],
+dnl p /= ARP(pdst='192.168.123.1', hwsrc='8a:bf:7e:2f:05:84')
+[00010800060400018abf7e2f0584c0a80111000000000000c0a87b01]
+))
+
+AT_DATA([arp_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000003a11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5003a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(dst='ff:ff:ff:ff:ff:ff')
+[ffffffffffff04bf1bd82d2d0806],
+dnl p /= ARP(pdst='192.168.123.1', hwsrc='8a:bf:7e:2f:05:84')
+[00010800060400018abf7e2f0584c0a80111000000000000c0a87b01]
+))
+
+dnl ICMPv6.
+AT_DATA([ndp_frame], m4_join([],
+dnl p = Ether(src='04:bf:1b:d8:2d:2d', dst='33:33:ff:00:00:01')
+[3333ff00000104bf1bd82d2d86dd],
+dnl p /= IPv6(src='fe80::2', dst='ff02::1:ff00:1')
+[6000000000203afffe800000000000000000000000000002ff0200000000000000000001ff000001],
+dnl p /= ICMPv6ND_NS(type=135, tgt='fe80::1')
+[87006e2600000000fe800000000000000000000000000001],
+dnl p /= ICMPv6NDOptSrcLLAddr(lladdr='8a:bf:7e:2f:05:84')
+[01018abf7e2f0584]
+))
+
+AT_DATA([ndp_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000006611402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500660000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='04:bf:1b:d8:2d:2d', dst='33:33:ff:00:00:01')
+[3333ff00000104bf1bd82d2d86dd],
+dnl p /= IPv6(src='fe80::2', dst='ff02::1:ff00:1')
+[6000000000203afffe800000000000000000000000000002ff0200000000000000000001ff000001],
+dnl p /= ICMPv6ND_NS(type=135, tgt='fe80::1')
+[87006e2600000000fe800000000000000000000000000001],
+dnl p /= ICMPv6NDOptSrcLLAddr(lladdr='8a:bf:7e:2f:05:84')
+[01018abf7e2f0584]
+))
+
+CHECK_FWD_PACKET(p1, p2, , [arp_frame], [arp_expected])
+CHECK_FWD_PACKET(p1, p2, , [ndp_frame], [ndp_expected])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat arp_expected | sed -e 's/e01312b5003a0000/e01312b5003a42f0/' > arp_csum_expected])
+AT_CHECK([cat ndp_expected | sed -e 's/e01312b500660000/e01312b5006610a3/' > ndp_csum_expected])
+
+CHECK_FWD_PACKET(p1, p2, , [arp_frame], [arp_csum_expected])
+CHECK_FWD_PACKET(p1, p2, , [ndp_frame], [ndp_csum_expected])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - ip csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,actions=mod_nw_dst:192.168.1.1,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d47814510000000000000000501000006b720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000008611402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500860000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.1.1', id=0, ttl=0)
+[45000068000000000006bd3cc0a87b02c0a80101],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d4781451000000000000000050100000e5720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/433c/423c/" > bad_frame])
+AT_CHECK([cat good_expected | sed -e "s/bd3c/bc3c/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/339e/0000/" | sed -e "s/bd3c/423c/" > half_bad_expected])
+
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum])
+
+AT_CHECK([cat good_expected | sed -e "s/bd3c/423c/" > half_bad_expected])
+
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e "s/e01312b500860000/e01312b5008674e9/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b500860000/e01312b5008675e9/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum=true])
+
+CHECK_IP_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_ip_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/339e/0000/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+dnl Special case 2, to check if Tx offloads did happen in the driver
+dnl with the outer UDP optimisation.
+dnl A valid inner L4 checksum is required for the optimisation to trigger.
+AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/339e/0000/" -e "s/bd3c/423c/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p1 options ol_l4_rx_csum_set_good])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum_disabled])
+
+dnl Special case 3, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_ip_tx_csum])
+
+dnl The inner part will be fixed by datapath.
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [good_csum_expected])
+
+dnl Special case 4, to check if Tx offloads did happen in the driver
+dnl with the outer UDP optimisation.
+dnl A valid inner L4 checksum is required for the optimisation to trigger.
+AT_CHECK([ovs-vsctl set Interface p1 options:ol_l4_rx_csum_set_good=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/bd3c/423c/" > half_bad_csum_expected])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [half_bad_csum_expected])
+
+AT_CHECK([ovs-vsctl remove Interface p1 options ol_l4_rx_csum_set_good])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_ip_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - tcp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d47814510000000000000000501000006b720000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000008611402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b500860000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[45000068000000000006433cc0a87b02c0a87b01],
+dnl p /= TCP(sport=54392, dport=2222, flags='A', window=0)
+[d47808ae00000000000000005010000077150000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/6b72/dead/" > bad_frame])
+dnl 0x6b72 + (5201-2222) == 0x7715
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/7715/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/7715/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e "s/e01312b500860000/e01312b50086eee9/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b500860000/e01312b500867bae/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/eee9/ffff/" -e "s/7715/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/7715/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - udp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([no_csum_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=5201, chksum=0)
+[d478145100480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([no_csum_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000007a11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5007a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=2222, chksum=0)
+[d47808ae00480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=5201)
+[d47814510048bb3b],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000007a11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5007a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f05840800],
+dnl p /= IP(src='192.168.123.2', dst='192.168.123.1', id=0, ttl=0)
+[4500005c000000000011433dc0a87b02c0a87b01],
+dnl p /= UDP(sport=54392, dport=2222)
+[d47808ae0048c6de],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/bb3b/dead/" > bad_frame])
+dnl 0xbb3b + (5201-2222) == 0xc6de
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/c6de/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/c6de/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat no_csum_expected | sed -e "s/e01312b5007a0000/e01312b5007ab5df/" > out_no_csum_expected])
+AT_CHECK([cat good_expected | sed -e "s/e01312b5007a0000/e01312b5007aef00/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b5007a0000/e01312b5007acb8e/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/ef00/ffff/" -e "s/c6de/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/c6de/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - IPv6 tcp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,tcp6,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000540640fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= TCP(sport=54392, dport=5201, flags='A', window=0)
+[d4781451000000000000000050100000e5c20000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000009a11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5009a0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000540640fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= TCP(sport=54392, dport=2222, flags='A', window=0)
+[d47808ae000000000000000050100000f1650000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/e5c2/dead/" > bad_frame])
+dnl 0xe5c2 + (5201-2222) == 0xf165
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/f165/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/f165/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat good_expected | sed -e "s/e01312b5009a0000/e01312b5009a91fa/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b5009a0000/e01312b5009a990f/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/91fa/ffff/" -e "s/f165/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/f165/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - IPv6 vxlan tunnel - IPv6 udp csum offload])
+AT_KEYWORDS([userspace offload])
+OVS_VSWITCHD_START(
+  [add-br br1 -- set bridge br1 datapath-type=dummy -- \
+   add-port br1 p1 -- \
+       set Interface p1 type=dummy -- \
+   add-br br2 -- set bridge br2 datapath-type=dummy -- \
+       set bridge br2 other-config:hwaddr=aa:66:aa:66:00:00 -- \
+   add-port br2 p2 -- \
+       set Interface p2 type=dummy])
+
+AT_CHECK([ovs-vsctl add-port br1 t1 \
+                    -- set Interface t1 type=vxlan \
+                       options:remote_ip=2001:cafe::92 options:key=123 \
+                       options:csum=false ofport_request=11], [0])
+AT_CHECK([ovs-ofctl add-flow br1 in_port=p1,udp6,tp_dst=5201,actions=mod_tp_dst:2222,output:11])
+
+AT_CHECK([ovs-appctl netdev-dummy/ip6addr br2 2001:cafe::88/64], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/neigh/set br2 2001:cafe::92 aa:66:aa:66:00:01], [0], [OK
+])
+AT_CHECK([ovs-appctl tnl/egress_port_range 57363 57363], [0], [OK
+])
+AT_CHECK([ovs-appctl vlog/set netdev_dummy:file:dbg])
+
+AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
+
+AT_DATA([no_csum_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=5201, chksum=0)
+[d478145100480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([no_csum_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000008e11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5008e0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=2222, chksum=0)
+[d47808ae00480000],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_frame], m4_join([],
+dnl p = Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=5201)
+[d47814510048358c],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_DATA([good_expected], m4_join([],
+dnl p = Ether(src='aa:66:aa:66:00:00', dst='aa:66:aa:66:00:01')
+[aa66aa660001aa66aa66000086dd],
+dnl p /= IPv6(src='2001:cafe::88', dst='2001:cafe::92')
+[60000000008e11402001cafe0000000000000000000000882001cafe000000000000000000000092],
+dnl p /= UDP(sport=57363, chksum=0)
+[e01312b5008e0000],
+dnl p /= VXLAN(vni=123, flags='Instance')
+[0800000000007b00],
+dnl p /= Ether(src='8a:bf:7e:2f:05:84', dst='0a:8f:39:4f:e0:73')
+[0a8f394fe0738abf7e2f058486dd],
+dnl p /= IPv6(src='fe80::2', dst='fe80::1')
+[6000000000481140fe800000000000000000000000000002fe800000000000000000000000000001],
+dnl p /= UDP(sport=54392, dport=2222)
+[d47808ae0048412f],
+dnl p /= Raw(i for i in range(64))
+[000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f]
+))
+
+AT_CHECK([cat good_frame | sed -e "s/358c/dead/" > bad_frame])
+dnl 0x358c + (5201-2222) == 0x412f
+dnl 0xdead + (5201-2222) == 0xea50
+AT_CHECK([cat good_expected | sed -e "s/412f/ea50/" > bad_expected])
+
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_expected], [bad_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_expected | sed -e "s/412f/dead/" > bad_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+dnl Now testing with outer checksums.
+
+AT_CHECK([ovs-vsctl set Interface t1 options:csum=true], [0])
+
+AT_CHECK([cat no_csum_expected | sed -e 's/e01312b5008e0000/e01312b5008ec84c/' > out_no_csum_expected])
+AT_CHECK([cat good_expected | sed -e "s/e01312b5008e0000/e01312b5008e871d/" > good_csum_expected])
+AT_CHECK([cat bad_expected | sed -e "s/e01312b5008e0000/e01312b5008eddfb/" > bad_csum_expected])
+
+AT_CHECK([ovs-vsctl get interface p2 options], [0], [{tx_pcap=p2.pcap}
+])
+dnl Tx offloads disabled.
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Inner Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Outer Tx offloads enabled.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum=true])
+
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [no_csum_frame], [out_no_csum_expected])
+CHECK_L4_CHECKSUMS(p1, p2, [good_frame], [bad_frame], [good_csum_expected], [bad_csum_expected])
+
+dnl Special case, to check if Tx offloads did happen in the driver.
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_out_udp_tx_csum_disabled=true])
+AT_CHECK([ovs-vsctl set Interface p2 options:ol_l4_tx_csum_disabled=true])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/871d/ffff/" -e "s/412f/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum_disabled])
+
+dnl Special case 2, to check if inner Tx offload did happen in the driver.
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_out_udp_tx_csum])
+
+AT_CHECK([cat good_csum_expected | sed -e "s/412f/dead/" > bad_csum_updated])
+CHECK_FWD_PACKET(p1, p2, ol_l4_rx_csum_set_good, [bad_frame], [bad_csum_updated])
+
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum_disabled])
+AT_CHECK([ovs-vsctl remove Interface p2 options ol_l4_tx_csum])
+
+OVS_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([dpif-netdev - conntrack])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [add-br br1 -- set bridge br1 datapath-type=dummy -- \
    add-port br1 p1 -- \
@@ -1736,7 +2922,7 @@ flow_s="\
   tcp,ip_src=192.168.123.2,ip_dst=192.168.123.1,ip_frag=no,\
   tcp_src=54392,tcp_dst=5201,tcp_flags=ack"
 
-good_frame=$(ovs-ofctl compose-packet --bare "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_s}" > good_frame])
 
 AT_CHECK([ovs-vsctl set Interface p2 options:tx_pcap=p2.pcap])
 
@@ -1747,176 +2933,128 @@ AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [0
 
 dnl Checks for good packet (Tx offloads disabled).
 flow_expected=$(echo "${flow_s}" | sed 's/192.168.123.1/192.168.1.1/g')
-good_expected=$(ovs-ofctl compose-packet --bare "${flow_expected}")
+AT_CHECK([ovs-ofctl compose-packet --bare "${flow_expected}" > good_expected])
 
 dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, , [good_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [1
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [0
-])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
 ])
 
 dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [good_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [1
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [0
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
 
 dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_bad, [good_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [1
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [1
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
 
 dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_partial, [good_frame], [good_expected])
+AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [1
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
+AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [1
+])
 
 dnl Checks for bad packet (Tx offloads disabled).
-bad_frame=$(ovs-ofctl compose-packet --bare --bad-csum "${flow_s}")
+AT_CHECK([ovs-ofctl compose-packet --bare --bad-csum "${flow_s}" > bad_frame])
 
 dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, , [bad_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [2
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [2
 ])
 
 dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [2
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [2
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-dnl In this case, datapath will fix the csum as it trusts the Rx status.
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
 
 dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_bad, [bad_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [2
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [3
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
 
 dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_partial, [bad_frame], [good_expected])
+AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [2
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
+AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [3
+])
 
-dnl Checks for good packet (Tx offloads enabled).
 AT_CHECK([ovs-vsctl set Interface p2 options:ol_ip_tx_csum=true])
 
+dnl Checks for good packet (Tx offloads enabled).
+
 dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, , [good_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [3
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [3
-])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
 ])
 
 dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [good_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [3
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [3
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
 
 dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_bad, [good_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [3
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [4
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
 
 dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${good_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_partial, [good_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [3
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [4
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
 
 dnl Checks for bad packet (Tx offloads enabled).
 
 dnl No Rx flag.
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, , [bad_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [4
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [5
 ])
 
 dnl Flag as Rx good.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_good, [bad_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [4
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [5
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-dnl In this case, datapath will fix the csum as it trusts the Rx status.
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
 
 dnl Flag as Rx bad.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_bad, [bad_frame], [none])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [4
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [6
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_bad=false])
 
 dnl Flag as Rx partial.
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=true])
-AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${bad_frame}])
+CHECK_FWD_PACKET(p1, p2, ol_ip_rx_csum_set_partial, [bad_frame], [good_expected])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_checked], [0], [4
 ])
 AT_CHECK([ovs-appctl coverage/read-counter conntrack_l3csum_err], [0], [6
 ])
-AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
-dnl In this case, datapath will fix the csum as it trusts the Rx status.
-AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${good_expected}
-])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_partial=false])
 
 dnl Special case, check natted ICMP (for traffic flagged good).
 icmp_frame="0a8f393fe0738abf7e2f05840800450000440001000040010364c0a87b02c0a87b010303746c0000000045000028000100004006037bc0a87b01c0a87b021451d4780000000000000000500220002fc40000"
@@ -1927,12 +3065,13 @@ AT_CHECK([ovs-appctl netdev-dummy/receive p1 ${icmp_frame}])
 AT_CHECK([ovs-pcap p2.pcap > p2.pcap.txt 2>&1])
 AT_CHECK_UNQUOTED([tail -n 1 p2.pcap.txt], [0], [${icmp_expected}
 ])
-AT_CHECK([ovs-vsctl set Interface p1 options:ol_ip_rx_csum_set_good=false])
+AT_CHECK([ovs-vsctl remove Interface p1 options ol_ip_rx_csum_set_good])
 
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - tso])
+AT_SETUP([dpif-netdev - tso])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [set Open_vSwitch . other_config:userspace-tso-enable=true -- \
    add-br br1 -- set bridge br1 datapath-type=dummy -- \
@@ -2004,7 +3143,8 @@ AT_CHECK_UNQUOTED([ovs-pcap p2.pcap], [0], [dnl
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - tunnel tso fallback])
+AT_SETUP([dpif-netdev - tunnel tso fallback])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START([set Open_vSwitch . other_config:userspace-tso-enable=true \
                     -- add-br br1 -- set bridge br1 datapath-type=dummy \
                        other-config:hwaddr=aa:55:aa:55:00:03 \
@@ -2245,7 +3385,8 @@ AT_CHECK_UNQUOTED([ovs-pcap p1.pcap | sort], [0], [dnl
 OVS_VSWITCHD_STOP
 AT_CLEANUP
 
-AT_SETUP([userspace offload - tso + check_pkt_len])
+AT_SETUP([dpif-netdev - tso + check_pkt_len])
+AT_KEYWORDS([userspace offload])
 OVS_VSWITCHD_START(
   [set Open_vSwitch . other_config:userspace-tso-enable=true])
 add_of_ports --pcap br0 $(seq 1 3)

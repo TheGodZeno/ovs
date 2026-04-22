@@ -255,8 +255,27 @@ dp_packet_resize(struct dp_packet *b, size_t new_headroom, size_t new_tailroom)
     new_allocated = new_headroom + dp_packet_size(b) + new_tailroom;
 
     switch (b->source) {
-    case DPBUF_DPDK:
+    case DPBUF_DPDK: {
+#ifdef DPDK_NETDEV
+        uint32_t extbuf_len;
+
+        extbuf_len = netdev_dpdk_extbuf_size(new_allocated);
+        ovs_assert(extbuf_len <= UINT16_MAX);
+        new_base = netdev_dpdk_extbuf_allocate(extbuf_len);
+        if (!new_base) {
+            out_of_memory();
+        }
+        dp_packet_copy__(b, new_base, new_headroom, new_tailroom);
+        netdev_dpdk_extbuf_replace(b, new_base, extbuf_len);
+        /* Because of alignment, we may have gained a bit more tailroom than
+         * expected.  Update from the currently allocated length which got
+         * adjusted by rte_pktmbuf_attach_extbuf(). */
+        new_allocated = dp_packet_get_allocated(b);
+        break;
+#else
         OVS_NOT_REACHED();
+#endif
+    }
 
     case DPBUF_MALLOC:
         if (new_headroom == dp_packet_headroom(b)) {
@@ -553,12 +572,18 @@ dp_packet_compare_offsets(struct dp_packet *b1, struct dp_packet *b2,
 void
 dp_packet_ol_send_prepare(struct dp_packet *p, uint64_t flags)
 {
-    if (!dp_packet_ip_checksum_partial(p)
-        && !dp_packet_l4_checksum_partial(p)
-        && !dp_packet_inner_ip_checksum_partial(p)
+    if (!dp_packet_inner_ip_checksum_partial(p)
         && !dp_packet_inner_l4_checksum_partial(p)) {
-        /* Only checksumming needs actions. */
-        return;
+
+        if (!dp_packet_ip_checksum_partial(p)
+            && !dp_packet_l4_checksum_partial(p)) {
+            /* No checksumming needed. */
+            return;
+        }
+
+        if (OVS_UNLIKELY(dp_packet_tunnel(p) && !dp_packet_get_tso_segsz(p))) {
+            p->offloads &= ~DP_PACKET_OL_TUNNEL_MASK;
+        }
     }
 
     if (!dp_packet_tunnel(p)) {
@@ -587,19 +612,22 @@ dp_packet_ol_send_prepare(struct dp_packet *p, uint64_t flags)
         return;
     }
 
-    if (dp_packet_tunnel_geneve(p)
-        || dp_packet_tunnel_vxlan(p)) {
-
+    if (dp_packet_tunnel_geneve(p) || dp_packet_tunnel_vxlan(p)) {
         /* If the TX interface doesn't support UDP tunnel offload but does
-         * support inner checksum offload and an outer UDP checksum is
-         * required, then we can't offload inner checksum either. As that would
+         * support inner SCTP checksum offload and an outer UDP checksum is
+         * required, then we can't offload inner checksum either as that would
          * invalidate the outer checksum. */
         if (!(flags & NETDEV_TX_OFFLOAD_OUTER_UDP_CKSUM)
             && dp_packet_l4_checksum_partial(p)) {
-            flags &= ~(NETDEV_TX_OFFLOAD_TCP_CKSUM |
-                       NETDEV_TX_OFFLOAD_UDP_CKSUM |
-                       NETDEV_TX_OFFLOAD_SCTP_CKSUM |
-                       NETDEV_TX_OFFLOAD_IPV4_CKSUM);
+            flags &= ~NETDEV_TX_OFFLOAD_SCTP_CKSUM;
+            if (!packet_udp_tunnel_csum(p)) {
+                /* Similarly to the previous comment, since the outer UDP
+                 * checksum optimisation did not happen, invalidate inner
+                 * checksum offloads support. */
+                flags &= ~(NETDEV_TX_OFFLOAD_TCP_CKSUM |
+                           NETDEV_TX_OFFLOAD_UDP_CKSUM |
+                           NETDEV_TX_OFFLOAD_IPV4_CKSUM);
+            }
         }
     }
 

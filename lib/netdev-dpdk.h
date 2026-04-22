@@ -32,7 +32,11 @@ struct netdev;
 void netdev_dpdk_register(const struct smap *);
 void free_dpdk_buf(struct dp_packet *);
 
-bool netdev_dpdk_flow_api_supported(struct netdev *);
+uint32_t netdev_dpdk_extbuf_size(uint32_t);
+void *netdev_dpdk_extbuf_allocate(uint32_t);
+void netdev_dpdk_extbuf_replace(struct dp_packet *, void *, uint32_t);
+
+bool netdev_dpdk_flow_api_supported(struct netdev *, bool check_only);
 
 int
 netdev_dpdk_rte_flow_destroy(struct netdev *netdev,

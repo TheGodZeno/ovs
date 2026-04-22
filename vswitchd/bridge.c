@@ -28,6 +28,7 @@
 #include "daemon.h"
 #include "dirs.h"
 #include "dpif.h"
+#include "dpif-offload.h"
 #include "dpdk.h"
 #include "hash.h"
 #include "openvswitch/hmap.h"
@@ -38,7 +39,6 @@
 #include "mac-learning.h"
 #include "mcast-snooping.h"
 #include "netdev.h"
-#include "netdev-offload.h"
 #include "nx-match.h"
 #include "odp-execute.h"
 #include "ofproto/bond.h"
@@ -2532,11 +2532,11 @@ iface_refresh_netdev_status(struct iface *iface)
 {
     struct smap smap;
 
-    enum netdev_features current;
     enum netdev_flags flags;
     const char *link_state;
     struct eth_addr mac;
     int64_t bps, mtu_64, ifindex64, link_resets;
+    bool full_duplex;
     int mtu, error;
     uint32_t mbps;
 
@@ -2576,11 +2576,9 @@ iface_refresh_netdev_status(struct iface *iface)
     link_resets = netdev_get_carrier_resets(iface->netdev);
     ovsrec_interface_set_link_resets(iface->cfg, &link_resets, 1);
 
-    error = netdev_get_features(iface->netdev, &current, NULL, NULL, NULL);
+    error = netdev_get_duplex(iface->netdev, &full_duplex);
     if (!error) {
-        ovsrec_interface_set_duplex(iface->cfg,
-                                    netdev_features_is_full_duplex(current)
-                                    ? "full" : "half");
+        ovsrec_interface_set_duplex(iface->cfg, full_duplex ? "full" : "half");
     } else {
         ovsrec_interface_set_duplex(iface->cfg, NULL);
     }
@@ -3396,8 +3394,11 @@ bridge_run(void)
     }
     cfg = ovsrec_open_vswitch_first(idl);
 
+    if (cfg && ovsdb_idl_get_seqno(idl) != idl_seqno) {
+        dpif_offload_set_global_cfg(cfg);
+    }
+
     if (cfg) {
-        netdev_set_flow_api_enabled(&cfg->other_config);
         dpdk_init(&cfg->other_config);
         userspace_tso_init(&cfg->other_config);
     }
@@ -4063,6 +4064,13 @@ bridge_configure_remotes(struct bridge *br,
             }
 
             free(allowed);
+        }
+
+        if (shash_find(&ocs, c->target)) {
+            static struct vlog_rate_limit rl2 = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl2, "bridge %s: Duplicate controllers \"%s\".",
+                         br->name, c->target);
+            continue;
         }
 
         bridge_configure_local_iface_netdev(br, c);

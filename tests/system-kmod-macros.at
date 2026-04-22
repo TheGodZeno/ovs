@@ -97,6 +97,15 @@ m4_define([CHECK_CONNTRACK_FRAG_OVERLAP],
     AT_SKIP_IF([:])
 ])
 
+# CHECK_CONNTRACK_SNAT_ICMP_ID()
+#
+# Skip ICMP id conflict tests on kernel datapath. The fix for unique ICMP
+# id allocation on SNAT is in the userspace conntrack only.
+m4_define([CHECK_CONNTRACK_SNAT_ICMP_ID],
+[
+    AT_SKIP_IF([:])
+])
+
 # CHECK_CONNTRACK_NAT()
 #
 # Perform requirements checks for running conntrack NAT tests. The kernel
@@ -263,6 +272,11 @@ m4_define([VSCTL_ADD_DATAPATH_TABLE],
 # or necessary for the userspace datapath as it is checking for a kernel
 # specific regression.
 m4_define([CHECK_L3L4_CONNTRACK_REASM])
+
+# CHECK_NO_DPDK_OFFLOAD
+#
+# The kernel module tests do not use dpdk's rte_flow offload.
+m4_define([CHECK_NO_DPDK_OFFLOAD])
 
 # CHECK_NO_TC_OFFLOAD
 #

@@ -275,11 +275,6 @@ AT_SETUP([rcu])
 AT_CHECK([ovstest test-rcu], [0], [])
 AT_CLEANUP
 
-AT_SETUP([stopwatch module])
-AT_CHECK([ovstest test-stopwatch], [0], [......
-], [ignore])
-AT_CLEANUP
-
 AT_SETUP([netlink policy])
 AT_SKIP_IF([test "$IS_WIN32" = "yes"])
 AT_SKIP_IF([test "$IS_BSD" = "yes"])
@@ -307,4 +302,8 @@ AT_SETUP([cooperative-multitasking module nested yield detection])
 AT_CHECK([ovstest test-cooperative-multitasking-nested-yield], [0], [], [dnl
 cooperative_multitasking|ERR|Nested yield avoided, this is a bug! Enable debug logging for more details.
 ])
+AT_CLEANUP
+
+AT_SETUP([Conntrack Library - FTP ALG parsing])
+AT_CHECK([ovstest test-conntrack ftp-alg-large-payload])
 AT_CLEANUP

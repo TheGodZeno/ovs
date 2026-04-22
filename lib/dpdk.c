@@ -31,7 +31,6 @@
 #include "dirs.h"
 #include "fatal-signal.h"
 #include "netdev-dpdk.h"
-#include "netdev-offload-provider.h"
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/vlog.h"
 #include "ovs-atomic.h"
@@ -186,7 +185,7 @@ construct_dpdk_mutex_options(const struct smap *ovs_other_config,
     int i;
     for (i = 0; i < ARRAY_SIZE(excl_opts); ++i) {
         int found_opts = 0, scan, found_pos = -1;
-        const char *found_value;
+        const char *found_value = NULL;
         struct dpdk_exclusive_options_map *popt = &excl_opts[i];
 
         for (scan = 0; scan < MAX_DPDK_EXCL_OPTS
@@ -508,7 +507,6 @@ dpdk_init__(const struct smap *ovs_other_config)
 
     /* Finally, register the dpdk classes */
     netdev_dpdk_register(ovs_other_config);
-    netdev_register_flow_api_provider(&netdev_offload_dpdk);
     return true;
 }
 

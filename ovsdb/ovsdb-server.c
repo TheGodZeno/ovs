@@ -419,6 +419,7 @@ parse_relay_args(const char *arg, char **name, char **remote)
 {
     const char *relay_prefix = "relay:";
     const int relay_prefix_len = strlen(relay_prefix);
+    const char *second_colon;
     bool is_relay;
 
     is_relay = !strncmp(arg, relay_prefix, relay_prefix_len);
@@ -426,15 +427,15 @@ parse_relay_args(const char *arg, char **name, char **remote)
         return false;
     }
 
-    *remote = strchr(arg + relay_prefix_len, ':');
+    second_colon = strchr(arg + relay_prefix_len, ':');
 
-    if (!*remote || (*remote)[0] == '\0') {
+    if (!second_colon || second_colon[1] == '\0') {
         *remote = NULL;
         return false;
     }
     arg += relay_prefix_len;
-    *name = xmemdup0(arg, *remote - arg);
-    *remote = xstrdup(*remote + 1);
+    *name = xmemdup0(arg, second_colon - arg);
+    *remote = xstrdup(second_colon + 1);
     return true;
 }
 
@@ -1424,6 +1425,12 @@ add_manager_options(struct shash *remotes, const struct ovsdb_row *row)
         return;
     }
 
+    if (!strncmp("pfd:", target, 4)) {
+        VLOG_WARN_RL(&rl, "pfd: remotes can only be specified on the "
+                     "command line; ignoring \"%s\" from database", target);
+        return;
+    }
+
     options = add_remote(remotes, target, NULL);
     if (ovsdb_util_read_integer_column(row, "max_backoff", &max_backoff)) {
         options->rpc.max_backoff = max_backoff;
@@ -1484,7 +1491,16 @@ query_db_remotes(const char *name, const struct shash *all_dbs,
 
             datum = &row->fields[column->index];
             for (i = 0; i < datum->n; i++) {
-                add_remote(remotes, json_string(datum->keys[i].s), NULL);
+                const char *t = json_string(datum->keys[i].s);
+                if (!strncmp("pfd:", t, 4)) {
+                    static struct vlog_rate_limit pfd_rl
+                        = VLOG_RATE_LIMIT_INIT(1, 1);
+                    VLOG_WARN_RL(&pfd_rl, "pfd: remotes can only be "
+                                 "specified on the command line; ignoring "
+                                 "\"%s\" from database", t);
+                    continue;
+                }
+                add_remote(remotes, t, NULL);
             }
         }
     } else if (column->type.key.type == OVSDB_TYPE_UUID
@@ -2287,6 +2303,12 @@ ovsdb_server_add_remote(struct unixctl_conn *conn, int argc OVS_UNUSED,
     char *retval;
 
     if (check_config_file_on_unixctl(conn)) {
+        return;
+    }
+
+    if (!strncmp("pfd:", remote, 4)) {
+        unixctl_command_reply_error(conn,
+            "pfd: remotes can only be specified on the command line");
         return;
     }
 

@@ -19,6 +19,8 @@
 
 #include "openvswitch/netdev.h"
 #include "openvswitch/types.h"
+#include "ovs-atomic.h"
+#include "ovs-rcu.h"
 #include "packets.h"
 #include "flow.h"
 
@@ -216,6 +218,7 @@ int netdev_set_tx_multiq(struct netdev *, unsigned int n_txq);
 enum netdev_pt_mode netdev_get_pt_mode(const struct netdev *);
 void netdev_set_dpif_type(struct netdev *, const char *);
 const char *netdev_get_dpif_type(const struct netdev *);
+uint32_t netdev_get_block_id(struct netdev *);
 
 /* Packet reception. */
 int netdev_rxq_open(struct netdev *, struct netdev_rxq **, int id);
@@ -390,6 +393,25 @@ void netdev_get_addrs_list_flush(void);
 int netdev_get_addrs(const char dev[], struct in6_addr **paddr,
                      struct in6_addr **pmask, int *n_in6);
 #endif
+
+/* Offload-capable (HW) netdev information. */
+struct netdev_hw_info {
+    bool oor;                         /* Out of Offload Resources (OOR)? */
+    /* Is dpif_offload's netdev_hw_post_process() supported? */
+    atomic_bool post_process_api_supported;
+    int offload_count;                /* Offloaded flow count. */
+    int pending_count;                /* Pending (non-offloaded) flow count. */
+    OVSRCU_TYPE(void *) offload_data; /* Offload metadata. */
+};
+
+enum hw_info_type {
+    HW_INFO_TYPE_OOR = 1,        /* Out of Offload Resources (OOR) state. */
+    HW_INFO_TYPE_PEND_COUNT = 2, /* Pending(non-offloaded) flow count. */
+    HW_INFO_TYPE_OFFL_COUNT = 3  /* Offloaded flow count. */
+};
+
+int netdev_get_hw_info(struct netdev *, int type);
+void netdev_set_hw_info(struct netdev *, int type, int val);
 
 #ifdef  __cplusplus
 }

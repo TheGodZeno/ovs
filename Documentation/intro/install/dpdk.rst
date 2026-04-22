@@ -42,7 +42,7 @@ Build requirements
 In addition to the requirements described in :doc:`general`, building Open
 vSwitch with DPDK will require the following:
 
-- DPDK 24.11.3
+- DPDK 25.11
 
 - A `DPDK supported NIC`_
 
@@ -59,8 +59,8 @@ vSwitch with DPDK will require the following:
 
 Detailed system requirements can be found at `DPDK requirements`_.
 
-.. _DPDK supported NIC: https://doc.dpdk.org/guides-24.11/nics/index.html
-.. _DPDK requirements: https://doc.dpdk.org/guides-24.11/linux_gsg/sys_reqs.html
+.. _DPDK supported NIC: https://doc.dpdk.org/guides-25.11/nics/index.html
+.. _DPDK requirements: https://doc.dpdk.org/guides-25.11/linux_gsg/sys_reqs.html
 
 .. _dpdk-install:
 
@@ -73,9 +73,9 @@ Install DPDK
 #. Download the `DPDK sources`_, extract the file and set ``DPDK_DIR``::
 
        $ cd /usr/src/
-       $ wget https://fast.dpdk.org/rel/dpdk-24.11.3.tar.xz
-       $ tar xf dpdk-24.11.3.tar.xz
-       $ export DPDK_DIR=/usr/src/dpdk-stable-24.11.3
+       $ wget https://fast.dpdk.org/rel/dpdk-25.11.tar.xz
+       $ tar xf dpdk-25.11.tar.xz
+       $ export DPDK_DIR=/usr/src/dpdk-25.11
        $ cd $DPDK_DIR
 
 #. Configure and install DPDK using Meson
@@ -121,7 +121,7 @@ Install DPDK
 
 .. _DPDK sources: http://dpdk.org/rel
 .. _DPDK documentation:
-   https://doc.dpdk.org/guides-24.11/linux_gsg/build_dpdk.html
+   https://doc.dpdk.org/guides-25.11/linux_gsg/build_dpdk.html
 
 Install OVS
 ~~~~~~~~~~~
@@ -154,6 +154,10 @@ has to be configured to build against the DPDK library (``--with-dpdk``).
    .. note::
      While ``--with-dpdk`` is required, you can pass any other configuration
      option described in :ref:`general-configuring`.
+
+   .. note::
+     The AVX512 Datapath Classifier Performance feature is deprecated and will
+     be removed in a future release.
 
    It is strongly recommended to build OVS with at least ``-msse4.2`` and
    ``-mpopcnt`` optimization flags. If these flags are not enabled, the AVX512
@@ -722,7 +726,7 @@ Limitations
   release notes`_.
 
 .. _DPDK release notes:
-   https://doc.dpdk.org/guides-24.11/rel_notes/release_24_11.html
+   https://doc.dpdk.org/guides-25.11/rel_notes/release_25_11.html
 
 - Upper bound MTU: DPDK device drivers differ in how the L2 frame for a
   given MTU value is calculated e.g. i40e driver includes 2 x vlan headers in

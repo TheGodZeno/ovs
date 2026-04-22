@@ -47,6 +47,7 @@
 #include "dirs.h"
 #include "dp-packet.h"
 #include "dpdk.h"
+#include "dpif-offload.h"
 #include "dpif-netdev.h"
 #include "fatal-signal.h"
 #include "if-notifier.h"
@@ -1315,7 +1316,7 @@ dpdk_eth_dev_init(struct netdev_dpdk *dev)
                                      RTE_ETH_RX_OFFLOAD_TCP_CKSUM |
                                      RTE_ETH_RX_OFFLOAD_IPV4_CKSUM;
 
-    if (netdev_is_flow_api_enabled()) {
+    if (dpif_offload_enabled()) {
         /*
          * Full tunnel offload requires that tunnel ID metadata be
          * delivered with "miss" packets from the hardware to the
@@ -1821,6 +1822,7 @@ static void
 netdev_dpdk_vhost_destruct(struct netdev *netdev)
 {
     struct netdev_dpdk *dev = netdev_dpdk_cast(netdev);
+    bool is_client_mode;
     char *vhost_id;
 
     ovs_mutex_lock(&dpdk_mutex);
@@ -1835,6 +1837,7 @@ netdev_dpdk_vhost_destruct(struct netdev *netdev)
     }
 
     vhost_id = dev->vhost_id;
+    is_client_mode = dev->vhost_driver_flags & RTE_VHOST_USER_CLIENT;
     dev->vhost_id = NULL;
     rte_free(dev->vhost_rxq_enabled);
 
@@ -1849,7 +1852,7 @@ netdev_dpdk_vhost_destruct(struct netdev *netdev)
     if (dpdk_vhost_driver_unregister(dev, vhost_id)) {
         VLOG_ERR("%s: Unable to unregister vhost driver for socket '%s'.\n",
                  netdev->name, vhost_id);
-    } else if (!(dev->vhost_driver_flags & RTE_VHOST_USER_CLIENT)) {
+    } else if (!is_client_mode) {
         /* OVS server mode - remove this socket from list for deletion */
         fatal_signal_remove_file_to_unlink(vhost_id);
     }
@@ -2248,7 +2251,7 @@ dpdk_process_queue_size(struct netdev *netdev, const struct smap *args,
 
 static void
 dpdk_set_rx_steer_config(struct netdev *netdev, struct netdev_dpdk *dev,
-                         const struct smap *args, char **errp)
+                         const struct smap *args)
 {
     const char *arg = smap_get_def(args, "rx-steering", "rss");
     uint64_t flags = 0;
@@ -2256,22 +2259,20 @@ dpdk_set_rx_steer_config(struct netdev *netdev, struct netdev_dpdk *dev,
     if (!strcmp(arg, "rss+lacp")) {
         flags = DPDK_RX_STEER_LACP;
     } else if (strcmp(arg, "rss")) {
-        VLOG_WARN_BUF(errp, "%s: options:rx-steering "
-                      "unsupported parameter value '%s'",
-                      netdev_get_name(netdev), arg);
+        VLOG_WARN("%s: options:rx-steering unsupported parameter value '%s'",
+                  netdev_get_name(netdev), arg);
     }
 
     if (flags && dev->type != DPDK_DEV_ETH) {
-        VLOG_WARN_BUF(errp, "%s: options:rx-steering "
-                      "is only supported on ethernet ports",
-                      netdev_get_name(netdev));
+        VLOG_WARN("%s: options:rx-steering "
+                  "is only supported on ethernet ports",
+                  netdev_get_name(netdev));
         flags = 0;
     }
 
-    if (flags && netdev_is_flow_api_enabled()) {
-        VLOG_WARN_BUF(errp, "%s: options:rx-steering "
-                      "is incompatible with hw-offload",
-                      netdev_get_name(netdev));
+    if (flags && dpif_offload_enabled()) {
+        VLOG_WARN("%s: options:rx-steering is incompatible with hw-offload",
+                  netdev_get_name(netdev));
         flags = 0;
     }
 
@@ -2301,7 +2302,7 @@ netdev_dpdk_set_config(struct netdev *netdev, const struct smap *args,
     ovs_mutex_lock(&dpdk_mutex);
     ovs_mutex_lock(&dev->mutex);
 
-    dpdk_set_rx_steer_config(netdev, dev, args, errp);
+    dpdk_set_rx_steer_config(netdev, dev, args);
 
     dpdk_set_rxq_config(dev, args);
 
@@ -2598,6 +2599,9 @@ netdev_dpdk_batch_init_packet_fields(struct dp_packet_batch *batch)
     struct dp_packet *packet;
 
     DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
+        /* Datapath does not support multi-segment buffers. */
+        ovs_assert(packet->mbuf.nb_segs == 1);
+
         dp_packet_reset_cutlen(packet);
         packet->packet_type = htonl(PT_ETH);
         packet->has_hash = !!(packet->mbuf.ol_flags & RTE_MBUF_F_RX_RSS_HASH);
@@ -2644,63 +2648,44 @@ netdev_dpdk_prep_hwol_packet(struct netdev_dpdk *dev, struct rte_mbuf *mbuf)
         return true;
     }
 
-    if (dp_packet_tunnel(pkt)
-        && (dp_packet_inner_ip_checksum_partial(pkt)
-            || dp_packet_inner_l4_checksum_partial(pkt)
-            || mbuf->tso_segsz)) {
-        if (dp_packet_ip_checksum_partial(pkt)
-            || dp_packet_l4_checksum_partial(pkt)) {
-            mbuf->outer_l2_len = (char *) dp_packet_l3(pkt) -
-                                 (char *) dp_packet_eth(pkt);
-            mbuf->outer_l3_len = (char *) dp_packet_l4(pkt) -
-                                 (char *) dp_packet_l3(pkt);
+    if (dp_packet_tunnel(pkt)) {
+        mbuf->outer_l2_len = (char *) dp_packet_l3(pkt) -
+                             (char *) dp_packet_eth(pkt);
+        mbuf->outer_l3_len = (char *) dp_packet_l4(pkt) -
+                             (char *) dp_packet_l3(pkt);
 
-            if (dp_packet_tunnel_geneve(pkt)) {
-                mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_GENEVE;
-            } else if (dp_packet_tunnel_vxlan(pkt)) {
-                mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_VXLAN;
-            } else {
-                ovs_assert(dp_packet_tunnel_gre(pkt));
-                mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_GRE;
-            }
-
-            if (dp_packet_ip_checksum_partial(pkt)) {
-                mbuf->ol_flags |= RTE_MBUF_F_TX_OUTER_IP_CKSUM;
-            }
-
-            if (dp_packet_l4_checksum_partial(pkt)) {
-                ovs_assert(dp_packet_l4_proto_udp(pkt));
-                mbuf->ol_flags |= RTE_MBUF_F_TX_OUTER_UDP_CKSUM;
-            }
-
-            ip = dp_packet_l3(pkt);
-            mbuf->ol_flags |= IP_VER(ip->ip_ihl_ver) == 4
-                              ? RTE_MBUF_F_TX_OUTER_IPV4
-                              : RTE_MBUF_F_TX_OUTER_IPV6;
-
-            /* Inner L2 length must account for the tunnel header length. */
-            l2 = dp_packet_l4(pkt);
-            l3 = dp_packet_inner_l3(pkt);
-            l3_csum = dp_packet_inner_ip_checksum_partial(pkt);
-            l4 = dp_packet_inner_l4(pkt);
-            l4_csum = dp_packet_inner_l4_checksum_partial(pkt);
-            is_tcp = dp_packet_inner_l4_proto_tcp(pkt);
-            is_udp = dp_packet_inner_l4_proto_udp(pkt);
-            is_sctp = dp_packet_inner_l4_proto_sctp(pkt);
+        if (dp_packet_tunnel_geneve(pkt)) {
+            mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_GENEVE;
+        } else if (dp_packet_tunnel_vxlan(pkt)) {
+            mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_VXLAN;
         } else {
-            mbuf->outer_l2_len = 0;
-            mbuf->outer_l3_len = 0;
-
-            /* Skip outer headers. */
-            l2 = dp_packet_eth(pkt);
-            l3 = dp_packet_inner_l3(pkt);
-            l3_csum = dp_packet_inner_ip_checksum_partial(pkt);
-            l4 = dp_packet_inner_l4(pkt);
-            l4_csum = dp_packet_inner_l4_checksum_partial(pkt);
-            is_tcp = dp_packet_inner_l4_proto_tcp(pkt);
-            is_udp = dp_packet_inner_l4_proto_udp(pkt);
-            is_sctp = dp_packet_inner_l4_proto_sctp(pkt);
+            ovs_assert(dp_packet_tunnel_gre(pkt));
+            mbuf->ol_flags |= RTE_MBUF_F_TX_TUNNEL_GRE;
         }
+
+        if (dp_packet_ip_checksum_partial(pkt)) {
+            mbuf->ol_flags |= RTE_MBUF_F_TX_OUTER_IP_CKSUM;
+        }
+
+        if (dp_packet_l4_checksum_partial(pkt)) {
+            ovs_assert(dp_packet_l4_proto_udp(pkt));
+            mbuf->ol_flags |= RTE_MBUF_F_TX_OUTER_UDP_CKSUM;
+        }
+
+        ip = dp_packet_l3(pkt);
+        mbuf->ol_flags |= IP_VER(ip->ip_ihl_ver) == 4
+                          ? RTE_MBUF_F_TX_OUTER_IPV4
+                          : RTE_MBUF_F_TX_OUTER_IPV6;
+
+        /* Inner L2 length must account for the tunnel header length. */
+        l2 = dp_packet_l4(pkt);
+        l3 = dp_packet_inner_l3(pkt);
+        l3_csum = dp_packet_inner_ip_checksum_partial(pkt);
+        l4 = dp_packet_inner_l4(pkt);
+        l4_csum = dp_packet_inner_l4_checksum_partial(pkt);
+        is_tcp = dp_packet_inner_l4_proto_tcp(pkt);
+        is_udp = dp_packet_inner_l4_proto_udp(pkt);
+        is_sctp = dp_packet_inner_l4_proto_sctp(pkt);
     } else {
         mbuf->outer_l2_len = 0;
         mbuf->outer_l3_len = 0;
@@ -2741,22 +2726,15 @@ netdev_dpdk_prep_hwol_packet(struct netdev_dpdk *dev, struct rte_mbuf *mbuf)
 
     if (mbuf->tso_segsz) {
         struct tcp_header *th = l4;
-        uint16_t link_tso_segsz;
         int hdr_len;
 
         mbuf->l4_len = TCP_OFFSET(th->tcp_ctl) * 4;
-        if (dp_packet_tunnel(pkt)) {
-            link_tso_segsz = dev->mtu - mbuf->l2_len - mbuf->l3_len -
-                             mbuf->l4_len - mbuf->outer_l3_len;
-        } else {
-            link_tso_segsz = dev->mtu - mbuf->l3_len - mbuf->l4_len;
-        }
-
-        if (mbuf->tso_segsz > link_tso_segsz) {
-            mbuf->tso_segsz = link_tso_segsz;
-        }
 
         hdr_len = mbuf->l2_len + mbuf->l3_len + mbuf->l4_len;
+        if (dp_packet_tunnel(pkt)) {
+            hdr_len += mbuf->outer_l2_len + mbuf->outer_l3_len;
+        }
+
         if (OVS_UNLIKELY((hdr_len + mbuf->tso_segsz) > dev->max_packet_len)) {
             VLOG_WARN_RL(&rl, "%s: Oversized TSO packet. hdr: %"PRIu32", "
                          "gso: %"PRIu32", max len: %"PRIu32"",
@@ -3019,6 +2997,14 @@ netdev_dpdk_rxq_recv(struct netdev_rxq *rxq, struct dp_packet_batch *batch,
         return EAGAIN;
     }
 
+    if (qfill) {
+        if (nb_rx == NETDEV_MAX_BURST) {
+            *qfill = rte_eth_rx_queue_count(rx->port_id, rxq->queue_id);
+        } else {
+            *qfill = 0;
+        }
+    }
+
     if (policer) {
         dropped = nb_rx;
         nb_rx = ingress_policer_run(policer,
@@ -3037,14 +3023,6 @@ netdev_dpdk_rxq_recv(struct netdev_rxq *rxq, struct dp_packet_batch *batch,
 
     batch->count = nb_rx;
     netdev_dpdk_batch_init_packet_fields(batch);
-
-    if (qfill) {
-        if (nb_rx == NETDEV_MAX_BURST) {
-            *qfill = rte_eth_rx_queue_count(rx->port_id, rxq->queue_id);
-        } else {
-            *qfill = 0;
-        }
-    }
 
     return 0;
 }
@@ -3094,10 +3072,49 @@ netdev_dpdk_filter_packet_len(struct netdev_dpdk *dev, struct rte_mbuf **pkts,
     return cnt;
 }
 
+uint32_t
+netdev_dpdk_extbuf_size(uint32_t data_len)
+{
+    uint32_t buf_len = data_len;
+
+    buf_len += sizeof(struct rte_mbuf_ext_shared_info) + sizeof(uintptr_t);
+    buf_len = RTE_ALIGN_CEIL(buf_len, sizeof(uintptr_t));
+
+    return buf_len;
+}
+
+void *
+netdev_dpdk_extbuf_allocate(uint32_t buf_len)
+{
+    return rte_malloc(NULL, buf_len, RTE_CACHE_LINE_SIZE);
+}
+
 static void
 netdev_dpdk_extbuf_free(void *addr OVS_UNUSED, void *opaque)
 {
     rte_free(opaque);
+}
+
+void
+netdev_dpdk_extbuf_replace(struct dp_packet *b, void *buf, uint32_t data_len)
+{
+    struct rte_mbuf *pkt = (struct rte_mbuf *) b;
+    struct rte_mbuf_ext_shared_info *shinfo;
+    uint16_t buf_len = data_len;
+
+    shinfo = rte_pktmbuf_ext_shinfo_init_helper(buf, &buf_len,
+                                                netdev_dpdk_extbuf_free,
+                                                buf);
+    ovs_assert(shinfo != NULL);
+
+    if (RTE_MBUF_HAS_EXTBUF(pkt)) {
+        rte_pktmbuf_detach_extbuf(pkt);
+    }
+    rte_pktmbuf_attach_extbuf(pkt, buf, rte_malloc_virt2iova(buf), buf_len,
+                              shinfo);
+    /* OVS only supports mono segment.
+     * Packet size did not change, restore the current segment length. */
+    pkt->data_len = pkt->pkt_len;
 }
 
 static struct rte_mbuf *
@@ -3108,16 +3125,14 @@ dpdk_pktmbuf_attach_extbuf(struct rte_mbuf *pkt, uint32_t data_len)
     uint16_t buf_len;
     void *buf;
 
-    total_len += sizeof *shinfo + sizeof(uintptr_t);
-    total_len = RTE_ALIGN_CEIL(total_len, sizeof(uintptr_t));
-
+    total_len = netdev_dpdk_extbuf_size(total_len);
     if (OVS_UNLIKELY(total_len > UINT16_MAX)) {
         VLOG_ERR("Can't copy packet: too big %u", total_len);
         return NULL;
     }
 
     buf_len = total_len;
-    buf = rte_malloc(NULL, buf_len, RTE_CACHE_LINE_SIZE);
+    buf = netdev_dpdk_extbuf_allocate(buf_len);
     if (OVS_UNLIKELY(buf == NULL)) {
         VLOG_ERR("Failed to allocate memory using rte_malloc: %u", buf_len);
         return NULL;
@@ -3128,7 +3143,7 @@ dpdk_pktmbuf_attach_extbuf(struct rte_mbuf *pkt, uint32_t data_len)
                                                 netdev_dpdk_extbuf_free,
                                                 buf);
     if (OVS_UNLIKELY(shinfo == NULL)) {
-        rte_free(buf);
+        netdev_dpdk_extbuf_free(NULL, buf);
         VLOG_ERR("Failed to initialize shared info for mbuf while "
                  "attempting to attach an external buffer.");
         return NULL;
@@ -4154,6 +4169,23 @@ netdev_dpdk_get_speed(const struct netdev *netdev, uint32_t *current,
 
 out:
     return 0;
+}
+
+static int
+netdev_dpdk_get_duplex(const struct netdev *netdev, bool *full_duplex)
+{
+    struct netdev_dpdk *dev = netdev_dpdk_cast(netdev);
+    int err = 0;
+
+    ovs_mutex_lock(&dev->mutex);
+    if (dev->link.link_speed != RTE_ETH_SPEED_NUM_UNKNOWN) {
+        *full_duplex = dev->link.link_duplex == RTE_ETH_LINK_FULL_DUPLEX;
+    } else {
+        err = EOPNOTSUPP;
+    }
+    ovs_mutex_unlock(&dev->mutex);
+
+    return err;
 }
 
 static struct ingress_policer *
@@ -6498,7 +6530,7 @@ out:
 }
 
 bool
-netdev_dpdk_flow_api_supported(struct netdev *netdev)
+netdev_dpdk_flow_api_supported(struct netdev *netdev, bool check_only)
 {
     struct netdev_dpdk *dev;
     bool ret = false;
@@ -6517,7 +6549,7 @@ netdev_dpdk_flow_api_supported(struct netdev *netdev)
     dev = netdev_dpdk_cast(netdev);
     ovs_mutex_lock(&dev->mutex);
     if (dev->type == DPDK_DEV_ETH) {
-        if (dev->requested_rx_steer_flags) {
+        if (dev->requested_rx_steer_flags && !check_only) {
             VLOG_WARN("%s: rx-steering is mutually exclusive with hw-offload,"
                       " falling back to default rss mode",
                       netdev_get_name(netdev));
@@ -6868,6 +6900,7 @@ parse_vhost_config(const struct smap *ovs_other_config)
     .get_custom_stats = netdev_dpdk_get_custom_stats,   \
     .get_features = netdev_dpdk_get_features,           \
     .get_speed = netdev_dpdk_get_speed,                 \
+    .get_duplex = netdev_dpdk_get_duplex,               \
     .get_status = netdev_dpdk_get_status,               \
     .reconfigure = netdev_dpdk_reconfigure,             \
     .rxq_recv = netdev_dpdk_rxq_recv

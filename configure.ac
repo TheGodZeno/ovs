@@ -13,7 +13,7 @@
 # limitations under the License.
 
 AC_PREREQ(2.63)
-AC_INIT(openvswitch, 3.6.90, bugs@openvswitch.org)
+AC_INIT(openvswitch, 3.7.90, bugs@openvswitch.org)
 AC_CONFIG_SRCDIR([vswitchd/ovs-vswitchd.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
@@ -168,6 +168,8 @@ OVS_ENABLE_OPTION([-Wstrict-prototypes])
 OVS_ENABLE_OPTION([-Wold-style-definition])
 OVS_ENABLE_OPTION([-Wmissing-prototypes])
 OVS_ENABLE_OPTION([-Wmissing-field-initializers])
+OVS_ENABLE_OPTION([-Wmissing-declarations])
+OVS_ENABLE_OPTION([-Wmissing-variable-declarations])
 OVS_ENABLE_OPTION([-Wthread-safety])
 OVS_ENABLE_OPTION([-fno-strict-aliasing])
 OVS_ENABLE_OPTION([-Wswitch-bool])

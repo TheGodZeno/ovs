@@ -199,7 +199,7 @@ OFPST_PORT_DESC reply (OF1.5):
  1(tap0): addr:aa:55:aa:55:00:01
      config:     0
      state:      LIVE
-     current:    COPPER
+     current:    OTHER COPPER
      speed: 50000 Mbps now, 0 Mbps max
 ])
 
@@ -207,5 +207,27 @@ AT_CHECK([ovs-vsctl get interface tap0 link_speed], [0], [dnl
 50000000000
 ])
 
+AT_CHECK([ovs-vsctl get interface tap0 duplex], [0], [dnl
+full
+])
+
+AT_CHECK([ip link set dev tap0 down])
+AT_CHECK([ethtool -s tap0 duplex half])
+AT_CHECK([ip link set dev tap0 up])
+
+AT_CHECK([ovs-vsctl get interface tap0 duplex], [0], [dnl
+half
+])
+
 OVS_TRAFFIC_VSWITCHD_STOP
+AT_CLEANUP
+
+AT_SETUP([interface - name too long])
+
+OVS_TRAFFIC_VSWITCHD_START()
+
+AT_CHECK([ovs-vsctl -- _ADD_BR([a234567890b23456])], [65], [ignore], [stderr])
+AT_CHECK([grep 'name too long' stderr], [0], [ignore])
+
+OVS_TRAFFIC_VSWITCHD_STOP(["/could not open network device.*name too long/d"])
 AT_CLEANUP

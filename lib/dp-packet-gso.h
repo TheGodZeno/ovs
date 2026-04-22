@@ -17,7 +17,9 @@
 #ifndef DP_PACKET_GSO_H
 #define DP_PACKET_GSO_H 1
 
-bool dp_packet_gso(struct dp_packet *, struct dp_packet_batch **);
-int dp_packet_gso_nr_segs(struct dp_packet *);
+void dp_packet_gso(struct dp_packet *, struct dp_packet_batch **);
+unsigned int dp_packet_gso_nr_segs(struct dp_packet *);
+void dp_packet_gso_partial(struct dp_packet *, struct dp_packet_batch **);
+unsigned int dp_packet_gso_partial_nr_segs(struct dp_packet *);
 
 #endif /* dp-packet-gso.h */

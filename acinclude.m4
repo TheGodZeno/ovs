@@ -30,6 +30,8 @@ AC_DEFUN([OVS_CHECK_ACTIONS_AUTOVALIDATOR], [
     AC_DEFINE([ACTIONS_AUTOVALIDATOR_DEFAULT], [1],
               [Autovalidator for actions is a default implementation.])
     AC_MSG_RESULT([yes])
+    AC_MSG_WARN(
+      [Explicit AVX512 feature support will be deprecated in the next release.])
   fi
 ])
 
@@ -50,6 +52,8 @@ AC_DEFUN([OVS_CHECK_MFEX_AUTOVALIDATOR], [
     AC_DEFINE([MFEX_AUTOVALIDATOR_DEFAULT], [1],
               [Autovalidator for miniflow_extract is a default implementation.])
     AC_MSG_RESULT([yes])
+    AC_MSG_WARN(
+      [Explicit AVX512 feature support will be deprecated in the next release.])
   fi
 ])
 
@@ -70,6 +74,8 @@ AC_DEFUN([OVS_CHECK_DPCLS_AUTOVALIDATOR], [
               [Autovalidator for the userspace datapath classifier is a
                default implementation.])
     AC_MSG_RESULT([yes])
+    AC_MSG_WARN(
+      [Explicit AVX512 feature support will be deprecated in the next release.])
   fi
 ])
 
@@ -88,6 +94,8 @@ AC_DEFUN([OVS_CHECK_DPIF_AVX512_DEFAULT], [
               [DPIF AVX512 is a default implementation of the userspace
                datapath interface.])
     AC_MSG_RESULT([yes])
+    AC_MSG_WARN(
+      [Explicit AVX512 feature support will be deprecated in the next release.])
   fi
 ])
 
@@ -162,6 +170,13 @@ AC_DEFUN([OVS_CHECK_LINUX_NETLINK], [
     ])],
     [AC_DEFINE([HAVE_RTA_VIA], [1],
     [Define to 1 if struct rtvia is available.])])
+
+  AC_COMPILE_IFELSE([
+    AC_LANG_PROGRAM([#include <linux/if_link.h>], [
+        int netnsid =  IFLA_IF_NETNSID;
+    ])],
+    [AC_DEFINE([HAVE_IFLA_IF_NETNSID], [1],
+    [Define to 1 if IFLA_IF_NETNSID is available.])])
 ])
 
 dnl OVS_CHECK_LINUX_TC
@@ -310,7 +325,11 @@ AC_DEFUN([OVS_CHECK_LINUX_AF_XDP], [
     AC_CHECK_HEADER([bpf/libbpf.h], [], [failed_dep="bpf/libbpf.h"])
 
     if test "$failed_dep" = none; then
-      AC_CHECK_HEADER([linux/if_xdp.h], [], [failed_dep="linux/if_xdp.h"])
+      AC_CHECK_HEADER([linux/if_xdp.h], [
+        AC_CHECK_DECLS([XDP_USE_NEED_WAKEUP], [],
+                       [failed_dep="XDP_USE_NEED_WAKEUP"],
+                       [[#include <linux/if_xdp.h>]])
+      ], [failed_dep="linux/if_xdp.h"])
     fi
 
     if test "$failed_dep" = none; then
@@ -411,6 +430,13 @@ AC_DEFUN([OVS_CHECK_DPDK], [
     AC_CHECK_HEADERS([rte_config.h], [], [
       AC_MSG_ERROR([unable to find rte_config.h in $with_dpdk])
     ], [AC_INCLUDES_DEFAULT])
+
+    AC_COMPUTE_INT([dpdk_mbuf_headroom], [RTE_PKTMBUF_HEADROOM],
+                   [AC_INCLUDES_DEFAULT],
+                   [AC_MSG_ERROR([unable to determine RTE_PKTMBUF_HEADROOM])])
+    AC_DEFINE_UNQUOTED([DPDK_MBUF_HEADROOM], [$dpdk_mbuf_headroom],
+                       [Value of RTE_PKTMBUF_HEADROOM from DPDK])
+    AC_SUBST([DPDK_MBUF_HEADROOM], [$dpdk_mbuf_headroom])
 
     AC_CHECK_DECLS([RTE_LIBRTE_VHOST_NUMA, RTE_EAL_NUMA_AWARE_HUGEPAGES], [
       OVS_FIND_DEPENDENCY([get_mempolicy], [numa], [libnuma])
@@ -602,7 +628,7 @@ AC_DEFUN([_OVS_CHECK_CC_OPTION], [dnl
      dnl instead of testing for -Wno-<foo>, test for the positive version.
      CFLAGS="$CFLAGS $WERROR m4_bpatsubst([$1], [-Wno-], [-W])"
      AC_COMPILE_IFELSE(
-       [AC_LANG_SOURCE([int x;])],
+       [AC_LANG_SOURCE([extern int x; int x;])],
        [if test -s conftest.err && grep "unrecognized option" conftest.err
         then
           ovs_cv_name[]=no

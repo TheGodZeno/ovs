@@ -245,75 +245,13 @@ build upon them to verify your implementation.
 
 The datapath tests make some assumptions about the environment. They must be
 run under root privileges on a Linux system with support for network
-namespaces. For ease of use, the OVS source tree includes a vagrant box to
-invoke these tests. Running the tests inside Vagrant provides kernel isolation,
-protecting your development host from kernel panics or configuration conflicts
-in the testsuite. If you wish to run the tests without using the vagrant box,
-there are further instructions below.
+namespaces.
 
-Vagrant
-+++++++
-
-.. important::
-
-  Requires Vagrant (version 1.7.0 or later) and a compatible hypervisor
-
-.. note::
-  You must bootstrap and configure the sources (see
-  doc:`/intro/install/general`) before you run the steps described
-  here.
-
-A Vagrantfile is provided allowing to compile and provision the source tree as
-found locally in a virtual machine using the following command::
-
-    $ vagrant up
-
-This will bring up a Fedora 23 VM by default. If you wish to use a different
-box or a vagrant backend not supported by the default box, the ``Vagrantfile``
-can be modified to use a different box as base.
-
-The VM can be reprovisioned at any time::
-
-    $ vagrant provision
-
-OVS out-of-tree compilation environment can be set up with::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with configure_ovs,build_ovs
-
-This will set up an out-of-tree build environment inside the VM in
-``/root/build``.  The source code can be found in ``/vagrant``.
-
-To recompile and reinstall OVS in the VM using RPM::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with configure_ovs,install_rpm
-
-Two provisioners are included to run system tests with the OVS kernel module or
-with a userspace datapath. This tests are different from the self-tests
-mentioned above. To run them::
-
-    $ ./boot.sh
-    $ vagrant provision --provision-with \
-        configure_ovs,test_ovs_kmod,test_ovs_system_userspace
-
-The results of the testsuite reside in the VM root user's home directory::
-
-    $ vagrant ssh
-    $ sudo -s
-    $ cd /root/build
-    $ ls tests/system*
-
-Native
-++++++
-
-The datapath testsuite as invoked by Vagrant above may also be run manually on
-a Linux system with root privileges. Make sure, no other Open vSwitch instance
-is running on the test suite. These tests may take several minutes to complete,
-and cannot be run in parallel.
+Make sure, no other Open vSwitch instance is running on the test suite. These
+tests may take several minutes to complete, and cannot be run in parallel.
 
 Userspace datapath
-'''''''''''''''''''
++++++++++++++++++++
 
 To invoke the datapath testsuite with the userspace datapath, run::
 
@@ -325,7 +263,7 @@ All the features documented under `Unit Tests`_ are available for the userspace
 datapath testsuite.
 
 Userspace datapath with DPDK
-''''''''''''''''''''''''''''
+++++++++++++++++++++++++++++
 
 To test :doc:`/intro/install/dpdk` (i.e., the build was configured with
 ``--with-dpdk``, the DPDK is installed), run the testsuite and generate
@@ -358,13 +296,36 @@ with a mlx5 device::
 All tests are skipped if no hugepages are configured. User must look into the DPDK
 manual to figure out how to `Configure hugepages`_.
 
-.. _Configure hugepages: https://doc.dpdk.org/guides-24.11/linux_gsg/sys_reqs.html
+.. _Configure hugepages: https://doc.dpdk.org/guides-25.11/linux_gsg/sys_reqs.html
 
 All the features documented under `Unit Tests`_ are available for the DPDK
 testsuite.
 
+Userspace datapath with DPDK offload
+++++++++++++++++++++++++++++++++++++
+
+To invoke the userspace datapath tests with DPDK and its rte_flow offload,
+the same prerequisites apply as above. In addition, six Virtual Function (VF)
+interfaces must be preconfigured and capable of hardware offloading traffic
+between each other.
+
+These six VFs need to be passed as a list of PF PCI addresses with their
+corresponding VF indexes in the OVS_DPDK_VF_PCI_ADDRS variable.
+For example::
+
+    OVS_DPDK_VF_PCI_ADDRS="0000:17:00.0,0 0000:17:00.0,1 0000:17:00.0,2 0000:17:00.0,3 0000:17:00.0,4 0000:17:00.0,5"
+
+To invoke the dpdk offloads testsuite with the userspace datapath, run::
+
+    make check-dpdk-offloads \
+        OVS_DPDK_VF_PCI_ADDRS="0000:17:00.0,0 0000:17:00.0,1 0000:17:00.0,2 0000:17:00.0,3 0000:17:00.0,4 0000:17:00.0,5"
+
 Userspace datapath: Testing and Validation of CPU-specific Optimizations
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. note::
+  The AVX512 CPU-specific optimization features are deprecated and will be
+  removed in a future release.
 
 As multiple versions of the datapath classifier, packet parsing functions and
 actions can co-exist, each with different CPU ISA optimizations, it is
@@ -429,7 +390,7 @@ option is used::
   test coverage.
 
 Kernel datapath
-'''''''''''''''
++++++++++++++++
 
 Make targets are also provided for testing the Linux kernel module. Note that
 these tests operate by inserting modules into the running Linux kernel, so if
@@ -511,60 +472,3 @@ suitability of different vSwitch implementations in a telco deployment
 environment. More information can be found on the `Anuket project wiki`_.
 
 .. _Anuket project wiki: https://wiki.anuket.io/display/HOME/ViNePERF
-
-Proof of Concepts
-~~~~~~~~~~~~~~~~~
-
-Proof of Concepts are documentation materialized into Ansible recipes
-executed in VirtualBox or Libvirt environments orchestrated by Vagrant.
-Proof of Concepts allow developers to create small virtualized setups that
-demonstrate how certain Open vSwitch features are intended to work avoiding
-user introduced errors by overlooking instructions.  Proof of Concepts
-are also helpful when integrating with thirdparty software, because standard
-unit tests with make check are limited.
-
-Vagrant by default uses VirtualBox provider.  However, if Libvirt is your
-choice of virtualization technology, then you can use it by installing Libvirt
-plugin::
-
-    $ vagrant plugin install vagrant-libvirt
-
-And then appending ``--provider=libvirt`` flag to vagrant commands.
-
-The host where Vagrant runs does not need to have any special software
-installed besides vagrant, virtualbox (or libvirt and libvirt-dev) and
-ansible.
-
-The following Proof of Concepts are supported:
-
-Builders
-++++++++
-
-This particular Proof of Concept demonstrates integration with Debian and RPM
-packaging tools::
-
-    $ cd ./poc/builders
-    $ vagrant up
-
-Once that command finished you can get packages from ``/var/www/html``
-directory.  Since those hosts are also configured as repositories then
-you can add them to ``/etc/apt/sources.list.d`` or ``/etc/yum.repos.d``
-configuration files on another host to retrieve packages with yum or
-apt-get.
-
-When you have made changes to OVS source code and want to rebuild packages
-run::
-
-    $ git commit -a
-    $ vagrant rsync && vagrant provision
-
-Whenever packages are rebuilt the Open vSwitch release number increases
-by one and you can simply upgrade Open vSwitch by running ``yum`` or
-``apt-get`` update commands.
-
-Once you are done with experimenting you can tear down setup with::
-
-    $ vagrant destroy
-
-Sometimes deployment of Proof of Concept may fail, if, for example, VMs
-don't have network reachability to the Internet.

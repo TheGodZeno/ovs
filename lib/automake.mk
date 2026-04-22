@@ -26,7 +26,7 @@ if HAVE_LD_AVX512_GOOD
 # compiler to use the ISA features required for the ISA optimized code-paths.
 # Use LDFLAGS to compile only static library of this code, as it should be
 # statically linked into vswitchd even if vswitchd is a shared build.
-lib_LTLIBRARIES += lib/libopenvswitchavx512.la
+noinst_LTLIBRARIES += lib/libopenvswitchavx512.la
 lib_libopenvswitch_la_LIBADD += lib/libopenvswitchavx512.la
 lib_libopenvswitchavx512_la_CFLAGS = \
 	-mavx512f \
@@ -143,6 +143,10 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/dpif-netdev-private.h \
 	lib/dpif-netdev-perf.c \
 	lib/dpif-netdev-perf.h \
+	lib/dpif-offload.c \
+	lib/dpif-offload.h \
+	lib/dpif-offload-dummy.c \
+	lib/dpif-offload-provider.h \
 	lib/dpif-provider.h \
 	lib/dpif.c \
 	lib/dpif.h \
@@ -206,9 +210,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/namemap.c \
 	lib/netdev-dpdk.h \
 	lib/netdev-dummy.c \
-	lib/netdev-offload.c \
-	lib/netdev-offload.h \
-	lib/netdev-offload-provider.h \
 	lib/netdev-provider.h \
 	lib/netdev-vport.c \
 	lib/netdev-vport.h \
@@ -471,11 +472,13 @@ lib_libopenvswitch_la_SOURCES += \
 	lib/dpif-netlink.h \
 	lib/dpif-netlink-rtnl.c \
 	lib/dpif-netlink-rtnl.h \
+	lib/dpif-offload-tc.c \
+	lib/dpif-offload-tc-netdev.c \
+	lib/dpif-offload-tc-private.h \
 	lib/if-notifier.c \
 	lib/netdev-linux.c \
 	lib/netdev-linux.h \
 	lib/netdev-linux-private.h \
-	lib/netdev-offload-tc.c \
 	lib/netlink-conntrack.c \
 	lib/netlink-conntrack.h \
 	lib/netlink-notifier.c \
@@ -502,8 +505,10 @@ endif
 if DPDK_NETDEV
 lib_libopenvswitch_la_SOURCES += \
 	lib/dpdk.c \
-	lib/netdev-dpdk.c \
-	lib/netdev-offload-dpdk.c
+	lib/dpif-offload-dpdk.c \
+	lib/dpif-offload-dpdk-netdev.c \
+	lib/dpif-offload-dpdk-private.h \
+	lib/netdev-dpdk.c
 else
 lib_libopenvswitch_la_SOURCES += \
 	lib/dpdk-stub.c

@@ -23,13 +23,13 @@
 #include "dpif-netdev.h"
 #include "dpif-netdev-perf.h"
 #include "dpif-netdev-private.h"
+#include "dpif-offload.h"
 
 #include <errno.h>
 #include <immintrin.h>
 
 #include "dp-packet.h"
 #include "netdev.h"
-#include "netdev-offload.h"
 
 /* Each AVX512 register (zmm register in assembly notation) can contain up to
  * 512 bits, which is equivalent to 8 uint64_t variables. This is the maximum
@@ -110,7 +110,7 @@ dp_netdev_input_outer_avx512(struct dp_netdev_pmd_thread *pmd,
                                                                      in_port);
     /* Check if EMC or SMC are enabled. */
     struct dfc_cache *cache = &pmd->flow_cache;
-    const uint32_t hwol_enabled = netdev_is_flow_api_enabled();
+    const uint32_t hwol_enabled = dpif_offload_enabled();
     const uint32_t emc_enabled = pmd->ctx.emc_insert_min != 0;
     const uint32_t smc_enabled = pmd->ctx.smc_enable_db;
 

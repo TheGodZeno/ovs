@@ -2602,7 +2602,10 @@ ovsdb_idl_get_row_for_uuid(const struct ovsdb_idl *idl,
                            const struct ovsdb_idl_table_class *tc,
                            const struct uuid *uuid)
 {
-    return ovsdb_idl_get_row(ovsdb_idl_table_from_class(idl, tc), uuid);
+    const struct ovsdb_idl_row *row;
+
+    row = ovsdb_idl_get_row(ovsdb_idl_table_from_class(idl, tc), uuid);
+    return (row && ovsdb_idl_row_exists(row)) ? row : NULL;
 }
 
 static struct ovsdb_idl_row *
@@ -3051,9 +3054,14 @@ ovsdb_idl_txn_extract_mutations(struct ovsdb_idl_row *row,
                     /* Find out if value really changed. */
                     struct ovsdb_datum *new_datum;
                     unsigned int pos;
+
                     new_datum = map_op_datum(map_op);
-                    ovsdb_datum_find_key(old_datum, &new_datum->keys[0],
-                                         key_type, &pos);
+                    if (!ovsdb_datum_find_key(old_datum, &new_datum->keys[0],
+                                              key_type, &pos)) {
+                        VLOG_WARN("Trying to update a value for a key that no "
+                                  "longer exists in the map.");
+                        continue;
+                    }
                     if (ovsdb_atom_equals(&new_datum->values[0],
                                           &old_datum->values[pos],
                                           value_type)) {

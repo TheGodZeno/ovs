@@ -542,8 +542,8 @@ dpif_netlink_rtnl_port_destroy(const char *name, const char *type)
  *
  * See ovs_tunnels_out_of_tree
  */
-bool
-dpif_netlink_rtnl_probe_oot_tunnels(void)
+static bool
+dpif_netlink_rtnl_probe_oot_tunnels__(void)
 {
     char namebuf[NETDEV_VPORT_NAME_BUFSIZE];
     struct netdev *netdev = NULL;
@@ -605,13 +605,35 @@ dpif_netlink_rtnl_probe_oot_tunnels(void)
                                          "ovs_geneve",
                                          (NLM_F_REQUEST | NLM_F_ACK
                                           | NLM_F_CREATE));
-        if (error != EOPNOTSUPP) {
+        /* EOPNOTSUPP indicates that OOT tunnel support is not present
+         * EPERM indicates insufficient permissions to add a tunnel.
+         * This may occur when OVS is run by an unprivileged user,
+         * e.g. when running make check.
+         * As this case doesn't use kernel tunnels, assume that they
+         * are not present for the sake of logic that warns if they are
+         * used.
+         */
+        if (error != EOPNOTSUPP && error != EPERM) {
             if (!error) {
                 dpif_netlink_rtnl_destroy(name);
             }
             out_of_tree = true;
         }
         netdev_close(netdev);
+    }
+
+    return out_of_tree;
+}
+
+bool
+dpif_netlink_rtnl_probe_oot_tunnels(void)
+{
+    bool out_of_tree = dpif_netlink_rtnl_probe_oot_tunnels__();
+
+    if (out_of_tree) {
+        VLOG_WARN_ONCE("Use of the OOT Kernel datapath module is deprecated. "
+                       "Please use the module provided by the upstream "
+                       "Kernel instead.");
     }
 
     return out_of_tree;

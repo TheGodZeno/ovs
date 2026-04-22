@@ -165,10 +165,11 @@ Q: What DPDK version does each Open vSwitch release work with?
     3.0.x        21.11.9
     3.1.x        22.11.7
     3.2.x        22.11.7
-    3.3.x        23.11.5
-    3.4.x        23.11.5
-    3.5.x        24.11.3
-    3.6.x        24.11.3
+    3.3.x        23.11.6
+    3.4.x        23.11.6
+    3.5.x        24.11.4
+    3.6.x        24.11.4
+    3.7.x        25.11
     ============ ========
 
 Q: Are all the DPDK releases that OVS versions work with maintained?
@@ -185,7 +186,7 @@ Q: Are all the DPDK releases that OVS versions work with maintained?
     The latest information about DPDK stable and LTS releases can be found
     at `DPDK stable`_.
 
-.. _DPDK stable: http://doc.dpdk.org/guides-24.11/contributing/stable.html
+.. _DPDK stable: https://doc.dpdk.org/guides-25.11/contributing/stable.html
 
 Q: What features are not available in the Open vSwitch kernel datapath that
 ships as part of the upstream Linux kernel?
