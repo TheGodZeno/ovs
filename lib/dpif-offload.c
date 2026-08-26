@@ -1278,10 +1278,19 @@ dpif_offload_operate(struct dpif *dpif, struct dpif_op **ops, size_t n_ops,
                              dpif_offload_name(offload), op->error);
 
                     switch (op->type) {
-                    case DPIF_OP_FLOW_PUT:
+                    case DPIF_OP_FLOW_PUT: {
+                        int log_error = 0;
+
+                        /* Keep ENOSPC and unhandled operations on the
+                         * existing debug-only path, but include full flow
+                         * details for real offload failures. */
+                        if (op->error > 0 && op->error != ENOSPC) {
+                            log_error = op->error;
+                        }
                         log_flow_put_message(dpif, &this_module,
-                                             &op->flow_put, 0);
+                                             &op->flow_put, log_error);
                         break;
+                    }
                     case DPIF_OP_FLOW_DEL:
                         log_flow_del_message(dpif, &this_module,
                                              &op->flow_del, 0);
@@ -1461,6 +1470,25 @@ dpif_offload_netdev_hw_post_process(struct netdev *netdev, unsigned pmd_id,
                              false);
     }
     return rc;
+}
+
+bool
+dpif_offload_netdev_udp_tnl_get_src_port(const struct netdev *ingress_netdev,
+                                         struct dp_packet *packet,
+                                         ovs_be16 *src_port)
+{
+    const struct dpif_offload *offload;
+
+    offload = ovsrcu_get(const struct dpif_offload *,
+                         &ingress_netdev->dpif_offload);
+
+    if (OVS_UNLIKELY(!offload)
+        || !offload->class->netdev_udp_tnl_get_src_port) {
+        return false;
+    }
+
+    return offload->class->netdev_udp_tnl_get_src_port(offload, ingress_netdev,
+                                                       packet, src_port);
 }
 
 void

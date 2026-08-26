@@ -75,7 +75,7 @@ COVERAGE_DEFINE(dpif_port_del);
 COVERAGE_DEFINE(dpif_purge);
 
 static const struct dpif_class *base_dpif_classes[] = {
-#if defined(__linux__) || defined(_WIN32)
+#ifdef __linux__
     &dpif_netlink_class,
 #endif
     &dpif_netdev_class,
@@ -1309,6 +1309,7 @@ dpif_execute_with_help(struct dpif *dpif, struct dpif_execute *execute)
     dp_packet_batch_init_packet(&pb, execute->packet);
     odp_execute_actions(&aux, &pb, false, execute->actions,
                         execute->actions_len, dpif_execute_helper_cb);
+    dp_packet_batch_destroy(&pb);
     ofpbuf_uninit(&aux.meter_actions);
     return aux.error;
 }

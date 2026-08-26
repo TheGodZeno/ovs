@@ -8,10 +8,8 @@ Open vSwitch
 
 .. image:: https://github.com/openvswitch/ovs/workflows/Build%20and%20Test/badge.svg
     :target: https://github.com/openvswitch/ovs/actions
-.. image:: https://ci.appveyor.com/api/projects/status/github/openvswitch/ovs?branch=main&svg=true&retina=true
-    :target: https://ci.appveyor.com/project/blp/ovs/history
-.. image:: https://api.cirrus-ci.com/github/openvswitch/ovs.svg
-    :target: https://cirrus-ci.com/github/openvswitch/ovs
+.. image:: https://github.com/openvswitch/ovs/workflows/FreeBSD%20Build%20and%20Test/badge.svg
+    :target: https://github.com/openvswitch/ovs/actions
 .. image:: https://readthedocs.org/projects/openvswitch/badge/?version=latest
     :target: https://docs.openvswitch.org/en/latest/
 
@@ -107,17 +105,8 @@ that license applies to the file in question.
 Files under the datapath directory are licensed under the GNU General Public
 License, version 2.
 
-File build-aux/cccl is licensed under the GNU General Public License, version 2.
-
 The following files are licensed under the 2-clause BSD license.
-    include/windows/getopt.h
-    lib/getopt_long.c
     lib/conntrack-tcp.c
-
-The following files are licensed under the 3-clause BSD-license
-    include/windows/netinet/icmp6.h
-    include/windows/netinet/ip6.h
-    lib/strsep.c
 
 Files lib/sflow*.[ch] are licensed under the terms of either the
 Sun Industry Standards Source License 1.1, that is available at:

@@ -14,16 +14,9 @@ m4_define([_ADD_BR], [[add-br $1 -- set Bridge $1 protocols=OpenFlow10,OpenFlow1
 # specifies the expected output after filtering through uuidfilt.
 # 'dbinit-aux-args' are passed as additional commands to 'ovs-vsctl init'
 # before starting ovs-vswitchd.
-#
-# Best-effort loading of all available vport modules is performed.
-#
 m4_define([OVS_TRAFFIC_VSWITCHD_START],
   [AT_CHECK([modprobe openvswitch])
    on_exit 'modprobe -r openvswitch'
-   m4_foreach([mod], [[vport_geneve], [vport_gre], [vport_vxlan]],
-              [modprobe -q mod || echo "Module mod not loaded."
-               on_exit 'modprobe -q -r mod'
-              ])
    on_exit 'ovs-dpctl del-dp ovs-system'
    on_exit 'ovs-appctl dpctl/flush-conntrack'
    _OVS_VSWITCHD_START([], [$3])
@@ -63,9 +56,13 @@ m4_define([CONFIGURE_VETH_OFFLOADS],
 # Perform requirements checks for running conntrack tests, and flush the
 # kernel conntrack tables when the test is finished.
 #
+# nf_conntrack_ipv[46] are old names in kernels before 4.18.  These will
+# fail on newer kernels, while nf_conntrack will fail on older ones.  But
+# these failures do not affect the test execution.
+#
 m4_define([CHECK_CONNTRACK],
-    [m4_foreach([mod], [[nf_conntrack_ipv4], [nf_conntrack_ipv6], [nf_nat_ftp],
-                        [nf_nat_tftp]],
+    [m4_foreach([mod], [[nf_conntrack_ipv4], [nf_conntrack_ipv6],
+                        [nf_conntrack], [nf_conntrack_netlink]],
                 [modprobe mod || echo "Module mod not loaded."
                  on_exit 'modprobe -r mod'
                 ])
@@ -77,9 +74,13 @@ m4_define([CHECK_CONNTRACK],
 # CHECK_CONNTRACK_ALG()
 #
 # Perform requirements checks for running conntrack ALG tests. The kernel
-# supports ALG, so no check is needed.
+# supports ALG, so no check is needed.  But we need to load the modules.
 #
-m4_define([CHECK_CONNTRACK_ALG])
+m4_define([CHECK_CONNTRACK_ALG],
+    [m4_foreach([mod], [[nf_nat_ftp], [nf_nat_tftp]],
+                [modprobe mod || echo "Module mod not loaded."
+                 on_exit 'modprobe -r mod'])]
+)
 
 # CHECK_CONNTRACK_LOCAL_STACK()
 #
@@ -117,12 +118,8 @@ m4_define([CHECK_CONNTRACK_NAT])
 #
 # Perform requirements checks for running conntrack all-zero IP SNAT tests.
 # The kernel always supports all-zero IP SNAT, so no check is needed.
-# However, the Windows datapath using the same netlink interface does not.
 #
-m4_define([CHECK_CONNTRACK_ZEROIP_SNAT],
-[
-    AT_SKIP_IF([test "$IS_WIN32" = "yes"])
-])
+m4_define([CHECK_CONNTRACK_ZEROIP_SNAT])
 
 # CHECK_CONNTRACK_SCTP()
 #
@@ -131,7 +128,6 @@ m4_define([CHECK_CONNTRACK_ZEROIP_SNAT],
 #
 m4_define([CHECK_CONNTRACK_SCTP],
 [
-   AT_SKIP_IF([test "$IS_WIN32" = "yes"])
    AT_SKIP_IF([! test -e /proc/sys/net/netfilter/nf_conntrack_sctp_timeout_closed])
 ])
 

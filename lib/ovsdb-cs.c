@@ -412,12 +412,6 @@ ovsdb_cs_retry_at(struct ovsdb_cs *cs, const char *where)
 static void
 ovsdb_cs_restart_fsm(struct ovsdb_cs *cs)
 {
-    /* Resync data DB table conditions to avoid missing updates due to
-     * conditions that were in flight or changed locally while the connection
-     * was down.
-     */
-    ovsdb_cs_db_sync_condition(&cs->data);
-
     ovsdb_cs_send_schema_request(cs, &cs->server);
     ovsdb_cs_transition(cs, CS_S_SERVER_SCHEMA_REQUESTED);
     cs->data.monitor_version = 0;
@@ -913,16 +907,46 @@ ovsdb_cs_db_get_table(struct ovsdb_cs_db *db, const char *table)
 }
 
 static void
+ovsdb_cs_db_destroy_table(struct ovsdb_cs_db_table *table,
+                          struct ovsdb_cs_db *db)
+{
+    json_destroy(table->ack_cond);
+    json_destroy(table->req_cond);
+    json_destroy(table->new_cond);
+    hmap_remove(&db->tables, &table->hmap_node);
+    free(table->name);
+    free(table);
+}
+
+/* Destroy a given ovsdb_cs_db_table according to the table name. */
+void
+ovsdb_cs_clear_condition(struct ovsdb_cs *cs, const char *table)
+{
+    uint32_t hash = hash_string(table, 0);
+    struct ovsdb_cs_db *db = &cs->data;
+
+    struct ovsdb_cs_db_table *t;
+    HMAP_FOR_EACH_WITH_HASH (t, hmap_node, hash, &db->tables) {
+        if (!strcmp(t->name, table)) {
+            ovsdb_cs_db_destroy_table(t, db);
+            db->last_id = UUID_ZERO;
+            return;
+        }
+    }
+}
+
+void
+ovsdb_cs_reset_last_id(struct ovsdb_cs *cs)
+{
+    cs->data.last_id = UUID_ZERO;
+}
+
+static void
 ovsdb_cs_db_destroy_tables(struct ovsdb_cs_db *db)
 {
     struct ovsdb_cs_db_table *table;
     HMAP_FOR_EACH_SAFE (table, hmap_node, &db->tables) {
-        json_destroy(table->ack_cond);
-        json_destroy(table->req_cond);
-        json_destroy(table->new_cond);
-        hmap_remove(&db->tables, &table->hmap_node);
-        free(table->name);
-        free(table);
+        ovsdb_cs_db_destroy_table(table, db);
     }
     hmap_destroy(&db->tables);
 }
@@ -1072,31 +1096,44 @@ ovsdb_cs_db_ack_condition(struct ovsdb_cs_db *db)
 
 /* Should be called when the CS fsm is restarted and resyncs table conditions
  * based on the state the DB is in:
- * - if a non-zero last_id is available for the DB then upon reconnect
+ * - If a non-zero 'last_id' is available for the DB, then upon reconnect
  *   the CS should first request acked conditions to avoid missing updates
  *   about records that were added before the transaction with
- *   txn-id == last_id. If there were requested condition changes in flight
- *   (i.e., req_cond not NULL) and the CS client didn't set new conditions
- *   (i.e., new_cond is NULL) then move req_cond to new_cond to trigger a
- *   follow up monitor_cond_change request.
- * - if there's no last_id available for the DB then it's safe to use the
- *   latest conditions set by the CS client even if they weren't acked yet.
+ *   txn-id == last_id.
+ *
+ * - If there were changes in flight then there are two cases:
+ *   a. either the server already processed the requested monitor condition
+ *      change but the FSM was restarted before the client was notified.
+ *      In this case the client should clear its local cache because it's
+ *      out of sync with the monitor view on the server side.
+ *
+ *   b. OR the server hasn't processed the requested monitor condition
+ *      change yet.
+ *
+ *   As there's no easy way to differentiate between the two, and given that
+ *   this condition should be rare, reset the 'last_id', essentially flushing
+ *   the local cached DB contents.
+ *
+ * - If there's no 'last_id' available for the DB or it was reset, then it's
+ *   safe to use the latest conditions set by the CS client even if they
+ *   weren't acked yet, since the local cache will be cleared anyway.
  */
 static void
 ovsdb_cs_db_sync_condition(struct ovsdb_cs_db *db)
 {
-    bool ack_all = uuid_is_zero(&db->last_id);
-    if (ack_all) {
-        db->cond_changed = false;
+    struct ovsdb_cs_db_table *table;
+
+    HMAP_FOR_EACH (table, hmap_node, &db->tables) {
+        if (table->req_cond) {
+            /* There was an in-flight condition change - reset. */
+            db->last_id = UUID_ZERO;
+            break;
+        }
     }
 
-    struct ovsdb_cs_db_table *table;
-    HMAP_FOR_EACH (table, hmap_node, &db->tables) {
-        /* When monitor_cond_since requests will be issued, the
-         * table->ack_cond condition will be added to the "where" clause".
-         * Follow up monitor_cond_change requests will use table->new_cond.
-         */
-        if (ack_all) {
+    if (uuid_is_zero(&db->last_id)) {
+        /* No 'last_id' - use the latest conditions for the monitor request. */
+        HMAP_FOR_EACH (table, hmap_node, &db->tables) {
             if (table->new_cond) {
                 json_destroy(table->req_cond);
                 table->req_cond = table->new_cond;
@@ -1108,39 +1145,16 @@ ovsdb_cs_db_sync_condition(struct ovsdb_cs_db *db)
                 table->ack_cond = table->req_cond;
                 table->req_cond = NULL;
             }
-        } else {
-            if (table->req_cond) {
-                /* There was an in-flight monitor_cond_change request.  It's no
-                 * longer relevant in the restarted FSM, so clear it. */
-                if (table->new_cond) {
-                    /* We will send a new monitor_cond_change with the new
-                     * condition.  The previously in-flight condition is
-                     * irrelevant and we can just forget about it. */
-                    json_destroy(table->req_cond);
-                } else {
-                    /* The restarted FSM needs to again send a request for the
-                     * previously in-flight condition. */
-                    table->new_cond = table->req_cond;
-                }
-                table->req_cond = NULL;
+        }
+        /* Nothing to send after the initial monitor request. */
+        db->cond_changed = false;
+    } else {
+        /* No in-flight changes and a non-zero 'last_id'.  Send acknowledged
+         * first, then follow up with the new, if any. */
+        HMAP_FOR_EACH (table, hmap_node, &db->tables) {
+            if (table->new_cond) {
                 db->cond_changed = true;
-
-                /* There are two cases:
-                 * a. either the server already processed the requested monitor
-                 *    condition change but the FSM was restarted before the
-                 *    client was notified.  In this case the client should
-                 *    clear its local cache because it's out of sync with the
-                 *    monitor view on the server side.
-                 *
-                 * b. OR the server hasn't processed the requested monitor
-                 *    condition change yet.
-                 *
-                 * As there's no easy way to differentiate between the two,
-                 * and given that this condition should be rare, reset the
-                 * 'last_id', essentially flushing the local cached DB
-                 * contents.
-                 */
-                db->last_id = UUID_ZERO;
+                break;
             }
         }
     }
@@ -1510,6 +1524,8 @@ ovsdb_cs_send_monitor_request(struct ovsdb_cs *cs, struct ovsdb_cs_db *db,
         db->schema, db->ops_aux);
     /* XXX handle failure */
     ovs_assert(mrs->type == JSON_OBJECT);
+
+    ovsdb_cs_db_sync_condition(db);
 
     if (version > 1) {
         struct ovsdb_cs_db_table *table;
@@ -2140,6 +2156,7 @@ ovsdb_cs_parse_schema(const struct json *schema_json)
 
         struct shash *columns = xmalloc(sizeof *columns);
         shash_init(columns);
+        shash_add(schema, table_name, columns);
 
         struct shash_node *node2;
         SHASH_FOR_EACH (node2, json_object(columns_json)) {
@@ -2170,7 +2187,6 @@ ovsdb_cs_parse_schema(const struct json *schema_json)
                 free(type);
             }
         }
-        shash_add(schema, table_name, columns);
     }
     return schema;
 

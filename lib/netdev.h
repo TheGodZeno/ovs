@@ -259,6 +259,7 @@ int netdev_build_header(const struct netdev *, struct ovs_action_push_tnl *data,
                         const struct netdev_tnl_build_header_params *params);
 
 int netdev_push_header(const struct netdev *netdev,
+                       const struct netdev *ingress_netdev,
                        struct dp_packet_batch *,
                        const struct ovs_action_push_tnl *data);
 void netdev_pop_header(struct netdev *netdev, struct dp_packet_batch *);
@@ -388,11 +389,9 @@ int netdev_dump_queue_stats(const struct netdev *,
 
 extern struct seq *tnl_conf_seq;
 
-#ifndef _WIN32
 void netdev_get_addrs_list_flush(void);
 int netdev_get_addrs(const char dev[], struct in6_addr **paddr,
                      struct in6_addr **pmask, int *n_in6);
-#endif
 
 /* Offload-capable (HW) netdev information. */
 struct netdev_hw_info {

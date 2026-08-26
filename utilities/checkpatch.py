@@ -162,6 +162,8 @@ __regex_if_macros = re.compile(r'^ +(%s) \([\S](?:[\s\S]*?[\S])?\) { +\\' %
                                __parenthesized_constructs)
 __regex_nonascii_characters = re.compile("[^\u0000-\u007f]")
 __regex_efgrep = re.compile(r'.*[ef]grep.*$')
+__regex_static_inline_c_file = re.compile(r'^\s*static\s+inline')
+__regex_always_inline = re.compile(r'\s*ALWAYS_INLINE\s*')
 
 skip_leading_whitespace_check = False
 skip_trailing_whitespace_check = False
@@ -629,6 +631,15 @@ checks = [
      lambda: print_warning("Empty return followed by brace, consider omitting")
      },
 
+    {'regex': r'(\.c)(\.in)?$', 'match_name': None,
+     'check':
+     lambda x: __regex_static_inline_c_file.search(x) is not None and
+     __regex_always_inline.search(x) is None,
+     'print':
+     lambda: print_warning(
+         "Using 'static inline' in a c-file without ALWAYS_INLINE.")
+     },
+
     {'regex': r'(\.at|\.sh)$', 'match_name': None,
      'check': lambda x: has_efgrep(x),
      'print':
@@ -637,6 +648,10 @@ checks = [
     {'regex': 'AUTHORS.rst$', 'match_name': None,
      'check': lambda x: update_missing_authors(x),
      'print': None},
+
+    {'regex': None, 'match_name': None,
+     'check': lambda x: 'ALLOW_EXPERIMENTAL_API' in x,
+     'print': lambda: print_error("DPDK Experimental API is not allowed")},
 ]
 
 
@@ -1058,18 +1073,13 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                 interim_line_check(current_file, cmp_line, lineno)
                 continue
 
-            # Skip files which have /datapath in them, since they are
-            # linux or windows coding standards
-            if current_file.startswith('datapath'):
-                continue
+            # Linux headers use Linux kernel coding style for the most part.
             if current_file.startswith('include/linux'):
                 continue
             # "sparse" includes could be copy-pasted from different sources
             # like DPDK or Linux and could contain workarounds not suitable
             # for a common style.
             if current_file.startswith('include/sparse'):
-                continue
-            if current_file.startswith('utilities/bugtool'):
                 continue
             run_checks(current_file, cmp_line, lineno)
 

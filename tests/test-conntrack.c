@@ -154,9 +154,9 @@ prepare_packets(size_t n, bool change, unsigned tid, ovs_be16 *dl_type)
     struct dp_packet_batch *pkt_batch = xzalloc(sizeof *pkt_batch);
     size_t i;
 
-    ovs_assert(n <= ARRAY_SIZE(pkt_batch->packets));
-
     dp_packet_batch_init(pkt_batch);
+    ovs_assert(n <= dp_packet_batch_capacity(pkt_batch));
+
     for (i = 0; i < n; i++) {
         uint16_t udp_dst = change ? 2+1 : 2;
         struct dp_packet *pkt = build_packet(1 + tid, udp_dst, dl_type);
@@ -170,6 +170,7 @@ static void
 destroy_packets(struct dp_packet_batch *pkt_batch)
 {
     dp_packet_delete_batch(pkt_batch, true);
+    dp_packet_batch_destroy(pkt_batch);
     free(pkt_batch);
 }
 
@@ -388,6 +389,7 @@ test_benchmark_zones(struct ovs_cmdl_context *ctx)
     conntrack_destroy(ct);
     for (i = 0; i < n_conns; i++) {
         dp_packet_delete_batch(pkt_batch[i], true);
+        dp_packet_batch_destroy(pkt_batch[i]);
         free(pkt_batch[i]);
     }
     free(pkt_batch);
@@ -419,7 +421,7 @@ pcap_batch_execute_conntrack(struct conntrack *ct_,
         if (flow.dl_type != dl_type) {
             conntrack_execute(ct_, &new_batch, dl_type, false, true, 0,
                               NULL, NULL, NULL, NULL, now, 0);
-            dp_packet_batch_init(&new_batch);
+            dp_packet_batch_reset(&new_batch);
         }
         dp_packet_batch_add(&new_batch, packet);
     }
@@ -429,6 +431,7 @@ pcap_batch_execute_conntrack(struct conntrack *ct_,
                           NULL, NULL, now, 0);
     }
 
+    dp_packet_batch_destroy(&new_batch);
 }
 
 static void
@@ -487,6 +490,7 @@ test_pcap(struct ovs_cmdl_context *ctx)
         }
 
         dp_packet_delete_batch(batch, true);
+        dp_packet_batch_destroy(batch);
     }
     conntrack_destroy(ct);
     ovs_pcap_close(pcap);

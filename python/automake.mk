@@ -1,13 +1,3 @@
-ovstest_pyfiles = \
-	python/ovstest/__init__.py \
-	python/ovstest/args.py \
-	python/ovstest/rpcserver.py \
-	python/ovstest/tcp.py \
-	python/ovstest/tests.py \
-	python/ovstest/udp.py \
-	python/ovstest/util.py \
-	python/ovstest/vswitch.py
-
 ovs_pyfiles = \
 	python/ovs/__init__.py \
 	python/ovs/compat/__init__.py \
@@ -26,7 +16,6 @@ ovs_pyfiles = \
 	python/ovs/db/schema.py \
 	python/ovs/db/types.py \
 	python/ovs/fatal_signal.py \
-	python/ovs/fcntl_win.py \
 	python/ovs/flow/__init__.py \
 	python/ovs/flow/decoders.py \
 	python/ovs/flow/filter.py \
@@ -51,8 +40,7 @@ ovs_pyfiles = \
 	python/ovs/unixctl/server.py \
 	python/ovs/util.py \
 	python/ovs/version.py \
-	python/ovs/vlog.py \
-	python/ovs/winutils.py
+	python/ovs/vlog.py
 
 ovs_pytests = \
 	python/ovs/tests/test_decoders.py \
@@ -93,6 +81,7 @@ EXTRA_DIST += \
 EXTRA_DIST += \
 	python/ovs/compat/sortedcontainers/LICENSE \
 	python/ovs/flowviz/ovs-flowviz.conf \
+	python/pyproject.toml \
 	python/README.rst \
 	python/setup.py \
 	python/test_requirements.txt
@@ -100,7 +89,7 @@ EXTRA_DIST += \
 # C extension support.
 EXTRA_DIST += python/ovs/_json.c
 
-PYFILES = $(ovs_pyfiles) python/ovs/dirs.py python/setup.py $(ovstest_pyfiles) $(ovs_pytests) \
+PYFILES = $(ovs_pyfiles) python/ovs/dirs.py python/setup.py $(ovs_pytests) \
 	$(ovs_flowviz)
 
 EXTRA_DIST += $(PYFILES)
@@ -115,7 +104,7 @@ FLAKE8_PYFILES += \
 	python/ovs/dirs.py.template \
 	python/setup.py.template
 
-nobase_pkgdata_DATA = $(ovs_pyfiles) $(ovstest_pyfiles) $(ovs_flowviz)
+nobase_pkgdata_DATA = $(ovs_pyfiles) $(ovs_flowviz)
 nobase_pkgdata_DATA += python/ovs/flowviz/ovs-flowviz.conf
 
 ovs-install-data-local:
@@ -135,7 +124,8 @@ ovs-install-data-local:
 	rm python/ovs/dirs.py.tmp
 
 .PHONY: python-sdist
-python-sdist: $(srcdir)/python/ovs/version.py $(ovs_pyfiles) python/ovs/dirs.py python/setup.py
+python-sdist: $(srcdir)/python/ovs/version.py $(ovs_pyfiles) python/ovs/dirs.py \
+	python/setup.py python/pyproject.toml
 	cd python/ && $(PYTHON3) -m build --sdist
 
 .PHONY: pypi-upload

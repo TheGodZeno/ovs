@@ -10,50 +10,10 @@ lib_LTLIBRARIES += lib/libopenvswitch.la
 lib_libopenvswitch_la_LIBADD = $(SSL_LIBS)
 lib_libopenvswitch_la_LIBADD += $(CAPNG_LDADD)
 
-
-if WIN32
-lib_libopenvswitch_la_LIBADD += ${PTHREAD_LIBS}
-endif
-
 lib_libopenvswitch_la_LDFLAGS = \
         $(OVS_LTINFO) \
         -Wl,--version-script=$(top_builddir)/lib/libopenvswitch.sym \
         $(AM_LDFLAGS)
-
-if HAVE_AVX512F
-if HAVE_LD_AVX512_GOOD
-# Build library of avx512 code with CPU ISA CFLAGS enabled. This allows the
-# compiler to use the ISA features required for the ISA optimized code-paths.
-# Use LDFLAGS to compile only static library of this code, as it should be
-# statically linked into vswitchd even if vswitchd is a shared build.
-noinst_LTLIBRARIES += lib/libopenvswitchavx512.la
-lib_libopenvswitch_la_LIBADD += lib/libopenvswitchavx512.la
-lib_libopenvswitchavx512_la_CFLAGS = \
-	-mavx512f \
-	-mbmi \
-	-mbmi2 \
-	-fPIC \
-	$(AM_CFLAGS)
-lib_libopenvswitchavx512_la_SOURCES = \
-	lib/dpif-netdev-avx512.c
-if HAVE_AVX512BW
-if HAVE_AVX512VL
-lib_libopenvswitchavx512_la_CFLAGS += \
-	-mavx512bw \
-	-mavx512vl
-lib_libopenvswitchavx512_la_SOURCES += \
-	lib/dpif-netdev-extract-avx512.c \
-	lib/dpif-netdev-lookup-avx512-gather.c
-if HAVE_GCC_AVX512VL_GOOD
-lib_libopenvswitchavx512_la_SOURCES += \
-	lib/odp-execute-avx512.c
-endif # HAVE_GCC_AVX512VL_GOOD
-endif # HAVE_AVX512VL
-endif # HAVE_AVX512BW
-lib_libopenvswitchavx512_la_LDFLAGS = \
-	-static
-endif # HAVE_LD_AVX512_GOOD
-endif # HAVE_AVX512F
 
 # Build core vswitch libraries as before
 lib_libopenvswitch_la_SOURCES = \
@@ -99,8 +59,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/cooperative-multitasking-private.h \
 	lib/coverage.c \
 	lib/coverage.h \
-	lib/cpu.c \
-	lib/cpu.h \
 	lib/crc32c.c \
 	lib/crc32c.h \
 	lib/csum.c \
@@ -124,25 +82,16 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/dp-packet-gso.c \
 	lib/dp-packet-gso.h \
 	lib/dpdk.h \
-	lib/dpif-netdev-extract-study.c \
-	lib/dpif-netdev-lookup.h \
-	lib/dpif-netdev-lookup.c \
-	lib/dpif-netdev-lookup-autovalidator.c \
-	lib/dpif-netdev-lookup-generic.c \
-	lib/dpif-netdev.c \
-	lib/dpif-netdev.h \
-	lib/dpif-netdev-private-dfc.c \
-	lib/dpif-netdev-private-dfc.h \
-	lib/dpif-netdev-private-dpcls.h \
-	lib/dpif-netdev-private-dpif.c \
-	lib/dpif-netdev-private-dpif.h \
-	lib/dpif-netdev-private-extract.c \
-	lib/dpif-netdev-private-extract.h \
-	lib/dpif-netdev-private-flow.h \
-	lib/dpif-netdev-private-thread.h \
-	lib/dpif-netdev-private.h \
+	lib/dpif-netdev-dfc.c \
+	lib/dpif-netdev-dfc.h \
+	lib/dpif-netdev-dpcls.c \
+	lib/dpif-netdev-dpcls.h \
+	lib/dpif-netdev-flow.h \
 	lib/dpif-netdev-perf.c \
 	lib/dpif-netdev-perf.h \
+	lib/dpif-netdev-thread.h \
+	lib/dpif-netdev.c \
+	lib/dpif-netdev.h \
 	lib/dpif-offload.c \
 	lib/dpif-offload.h \
 	lib/dpif-offload-dummy.c \
@@ -219,6 +168,7 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/netflow.h \
 	lib/netlink.c \
 	lib/netlink.h \
+	lib/netnsid.c \
 	lib/netnsid.h \
 	lib/nx-match.c \
 	lib/nx-match.h \
@@ -226,8 +176,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/object-collection.h \
 	lib/odp-execute.c \
 	lib/odp-execute.h \
-	lib/odp-execute-private.c \
-	lib/odp-execute-private.h \
 	lib/odp-util.c \
 	lib/odp-util.h \
 	lib/ofp-actions.c \
@@ -265,7 +213,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/ovs-atomic-i586.h \
 	lib/ovs-atomic-locked.c \
 	lib/ovs-atomic-locked.h \
-	lib/ovs-atomic-msvc.h \
 	lib/ovs-atomic-pthreads.h \
 	lib/ovs-atomic-x86_64.h \
 	lib/ovs-atomic.h \
@@ -356,7 +303,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/stream-tcp.c \
 	lib/stream.c \
 	lib/stream.h \
-	lib/stdio.c \
 	lib/string.c \
 	lib/svec.c \
 	lib/svec.h \
@@ -413,17 +359,6 @@ lib_libopenvswitch_la_SOURCES = \
 	lib/lldp/lldpd-structs.c \
 	lib/lldp/lldpd-structs.h
 
-if WIN32
-lib_libopenvswitch_la_SOURCES += \
-	lib/daemon-windows.c \
-	lib/getopt_long.c \
-	lib/getrusage-windows.c \
-	lib/latch-windows.c \
-	lib/route-table-stub.c \
-	lib/if-notifier-stub.c \
-	lib/stream-windows.c \
-	lib/strsep.c
-else
 lib_libopenvswitch_la_SOURCES += \
 	lib/daemon-unix.c \
 	lib/latch-unix.c \
@@ -431,10 +366,8 @@ lib_libopenvswitch_la_SOURCES += \
 	lib/signals.h \
 	lib/socket-util-unix.c \
 	lib/stream-unix.c
-endif
 
 EXTRA_DIST += \
-	lib/stdio.h.in \
 	lib/string.h.in
 
 nodist_lib_libopenvswitch_la_SOURCES = \
@@ -514,23 +447,6 @@ lib_libopenvswitch_la_SOURCES += \
 	lib/dpdk-stub.c
 endif
 
-if WIN32
-lib_libopenvswitch_la_SOURCES += \
-	lib/dpif-netlink.c \
-	lib/dpif-netlink.h \
-	lib/dpif-netlink-rtnl.h \
-	lib/netdev-windows.c \
-	lib/netlink-conntrack.c \
-	lib/netlink-conntrack.h \
-	lib/netlink-notifier.c \
-	lib/netlink-notifier.h \
-	lib/netlink-protocol.h \
-	lib/netlink-socket.c \
-	lib/netlink-socket.h \
-	lib/wmi.c \
-	lib/wmi.h
-endif
-
 if HAVE_POSIX_AIO
 lib_libopenvswitch_la_SOURCES += lib/async-append-aio.c
 else
@@ -601,13 +517,10 @@ MAN_FRAGMENTS += \
 	lib/netdev-dpdk-unixctl.man \
 	lib/dpif-netdev-unixctl.man \
 	lib/dpif-netlink-unixctl.man \
-	lib/odp-execute-unixctl.man \
 	lib/ofp-version.man \
 	lib/ovs.tmac \
 	lib/ovs-replay.man \
 	lib/ovs-replay-syn.man \
-	lib/service.man \
-	lib/service-syn.man \
 	lib/ssl-bootstrap.man \
 	lib/ssl-bootstrap-syn.man \
 	lib/ssl-peer-ca-cert.man \

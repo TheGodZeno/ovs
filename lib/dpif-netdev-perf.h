@@ -57,7 +57,6 @@ extern "C" {
 
 enum pmd_stat_type {
     PMD_STAT_PHWOL_HIT,     /* Packets that had a partial HWOL hit (phwol). */
-    PMD_STAT_MFEX_OPT_HIT,  /* Packets that had miniflow optimized match. */
     PMD_STAT_SIMPLE_HIT,    /* Packets that had a simple match hit. */
     PMD_STAT_EXACT_HIT,     /* Packets that had an exact match (emc). */
     PMD_STAT_SMC_HIT,       /* Packets that had a sig match hit (SMC). */
@@ -220,12 +219,12 @@ cycles_counter_update(struct pmd_perf_stats *s)
 {
 #ifdef DPDK_NETDEV
     return s->last_tsc = rte_get_tsc_cycles();
-#elif !defined(_MSC_VER) && defined(__x86_64__)
+#elif defined(__x86_64__)
     uint32_t h, l;
     asm volatile("rdtsc" : "=a" (l), "=d" (h));
 
     return s->last_tsc = ((uint64_t) h << 32) | l;
-#elif !defined(_MSC_VER) && defined(__aarch64__)
+#elif defined(__aarch64__)
     asm volatile("mrs %0, cntvct_el0" : "=r" (s->last_tsc));
 
     return s->last_tsc;
@@ -317,7 +316,7 @@ void pmd_perf_read_counters(struct pmd_perf_stats *s,
  * NON-PMD they might be updated from multiple threads, but we can live
  * with losing a rare update as 100% accuracy is not required.
  * However, as counters are read for display from outside the PMD thread
- * with e.g. pmd-stats-show, we make sure that the 64-bit read and store
+ * with e.g. pmd-perf-show, we make sure that the 64-bit read and store
  * operations are atomic also on 32-bit systems so that readers cannot
  * not read garbage. On 64-bit systems this incurs no overhead. */
 
@@ -423,7 +422,7 @@ struct pmd_perf_params {
 };
 
 void pmd_perf_format_overall_stats(struct ds *str, struct pmd_perf_stats *s,
-                                   double duration);
+                                   double duration, bool format_iterations);
 void pmd_perf_format_histograms(struct ds *str, struct pmd_perf_stats *s);
 void pmd_perf_format_iteration_history(struct ds *str,
                                        struct pmd_perf_stats *s,

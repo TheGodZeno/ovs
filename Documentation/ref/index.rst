@@ -43,13 +43,10 @@ time:
    ovs-appctl.8
    ovs-ctl.8
    ovs-flowviz.8
-   ovs-l3ping.8
    ovs-pki.8
    ovs-sim.1
    ovs-tcpdump.8
    ovs-tcpundump.1
-   ovs-test.8
-   ovs-vlan-test.8
    ovsdb-server.7
    ovsdb.5
    ovsdb.7
@@ -58,10 +55,6 @@ The remainder are still in roff format can be found below:
 
 .. list-table::
 
-   * - ovs-bugtool(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-bugtool.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-bugtool.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovs-bugtool.8.txt>`__
    * - ovsdb-client(1)
      - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovsdb-client.1.pdf>`__
      - `(html) <http://www.openvswitch.org/support/dist-docs/ovsdb-client.1.html>`__
@@ -94,18 +87,10 @@ The remainder are still in roff format can be found below:
      - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-pcap.1.pdf>`__
      - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-pcap.1.html>`__
      - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovs-pcap.1.txt>`__
-   * - ovs-test(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-test.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-test.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovs-test.8.txt>`__
    * - ovs-testcontroller(8)
      - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-testcontroller.8.pdf>`__
      - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-testcontroller.8.html>`__
      - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovs-testcontroller.8.txt>`__
-   * - ovs-vlan-test(8)
-     - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-vlan-test.8.pdf>`__
-     - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-vlan-test.8.html>`__
-     - `(plain text) <http://www.openvswitch.org/support/dist-docs/ovs-vlan-test.8.txt>`__
    * - ovs-vsctl(8)
      - `(pdf) <http://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.pdf>`__
      - `(html) <http://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.html>`__

@@ -27,8 +27,6 @@
 Userspace Datapath - TSO
 ========================
 
-**Note:** This feature is considered experimental.
-
 TCP Segmentation Offload (TSO) enables a network stack to delegate segmentation
 of an oversized TCP segment to the underlying physical NIC. Offload of frame
 segmentation achieves computational savings in the core, freeing up CPU cycles
@@ -117,7 +115,7 @@ This case is common for port not supporting TSO at all.
 A coverage counter exists to reflect when the software fallback helper
 is called.::
 
-   $ ovs-appctl coverage/read-counter netdev_soft_seg_good
+   $ ovs-appctl coverage/read-counter dp_packet_gso
    178760
 
 Another possibility is when the `TSO` packet involves a header encapsulation
@@ -128,7 +126,7 @@ OvS does some partial segmentation based on the segmentation size coming
 from the receiving port.
 A coverage counter exists to reflect when this optimisation is called.::
 
-   $ ovs-appctl coverage/read-counter netdev_partial_seg_good
+   $ ovs-appctl coverage/read-counter dp_packet_partial_gso
    1345
 
 ~~~~~~~~~~~

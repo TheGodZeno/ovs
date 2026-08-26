@@ -62,10 +62,11 @@ is suggested::
 
 .. important::
 
-    Hotplugging physical interfaces is not supported using the above syntax.
-    This is expected to change with the release of DPDK v18.05. For information
-    on hotplugging physical interfaces, you should instead refer to
-    :ref:`port-hotplug`.
+    Using this syntax requires that DPDK probes the device that owns those
+    multiple ports. This can be achieved by either setting an allowlist
+    of PCI devices in the ``dpdk-extra`` configuration, or by requesting that
+    all available devices (including PCI devices) be probed at initialization
+    (setting ``dpdk-probe-at-init`` to true).
 
 After the DPDK ports get added to switch, a polling thread continuously polls
 DPDK devices and consumes 100% of the core, as can be checked from ``top`` and
@@ -400,11 +401,6 @@ Supported actions for hardware offload are:
 - VLAN Push/Pop (push_vlan/pop_vlan).
 - Modification of IPv6 (set_field:<ADDR>->ipv6_src/ipv6_dst/mod_nw_ttl).
 - Clone/output (tnl_push/push_vlan/output) for encapsulating over a tunnel.
-- Tunnel pop, for packets received on physical ports.
-
-.. note::
-  Tunnel offloads are experimental APIs in DPDK. In order to enable it,
-  compile with -DALLOW_EXPERIMENTAL_API.
 
 Multiprocess
 ------------

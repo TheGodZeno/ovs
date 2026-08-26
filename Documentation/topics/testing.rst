@@ -306,88 +306,25 @@ Userspace datapath with DPDK offload
 
 To invoke the userspace datapath tests with DPDK and its rte_flow offload,
 the same prerequisites apply as above. In addition, six Virtual Function (VF)
-interfaces must be preconfigured and capable of hardware offloading traffic
-between each other.
+interfaces must be preconfigured on a single Physical Function (PF) that
+supports rte_flow hardware offload.
 
-These six VFs need to be passed as a list of PF PCI addresses with their
-corresponding VF indexes in the OVS_DPDK_VF_PCI_ADDRS variable.
-For example::
+This is an example on how to set this up for an NVIDIA blade on port
+``ens2f0np0``::
 
-    OVS_DPDK_VF_PCI_ADDRS="0000:17:00.0,0 0000:17:00.0,1 0000:17:00.0,2 0000:17:00.0,3 0000:17:00.0,4 0000:17:00.0,5"
+    OVS_PF_PCI=$(basename $(readlink /sys/class/net/ens2f0np0/device))
+    echo 0 > /sys/bus/pci/devices/$OVS_PF_PCI/sriov_numvfs
+    devlink dev eswitch set pci/$OVS_PF_PCI mode switchdev
+    echo 6 > /sys/bus/pci/devices/$OVS_PF_PCI/sriov_numvfs
 
-To invoke the dpdk offloads testsuite with the userspace datapath, run::
+This PF's PCI ID needs to be passed with the OVS_PF_PCI variable.
+To invoke the DPDK offloads testsuite with the userspace datapath, run::
 
-    make check-dpdk-offloads \
-        OVS_DPDK_VF_PCI_ADDRS="0000:17:00.0,0 0000:17:00.0,1 0000:17:00.0,2 0000:17:00.0,3 0000:17:00.0,4 0000:17:00.0,5"
-
-Userspace datapath: Testing and Validation of CPU-specific Optimizations
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-.. note::
-  The AVX512 CPU-specific optimization features are deprecated and will be
-  removed in a future release.
-
-As multiple versions of the datapath classifier, packet parsing functions and
-actions can co-exist, each with different CPU ISA optimizations, it is
-important to validate that they all give the exact same results.  To easily
-test all the implementations, an ``autovalidator`` implementation of them
-exists. This implementation runs all other available implementations, and
-verifies that the results are identical.
-
-Running the OVS unit tests with the autovalidator enabled ensures all
-implementations provide the same results.  Note that the performance of the
-autovalidator is lower than all other implementations, as it tests the scalar
-implementation against itself, and against all other enabled implementations.
-
-To adjust the autovalidator priority for a datapath classifier, use this
-command::
-
-    $ ovs-appctl dpif-netdev/subtable-lookup-prio-set autovalidator 7
-
-To set the autovalidator for the packet parser, use this command::
-
-    $ ovs-appctl dpif-netdev/miniflow-parser-set autovalidator
-
-To set the autovalidator for actions, use this command::
-
-    $ ovs-appctl odp-execute/action-impl-set autovalidator
-
-To run the OVS unit test suite with the autovalidator as the default
-implementation, it is required to recompile OVS.  During the recompilation,
-the default priority of the `autovalidator` implementation is set to the
-maximum priority, ensuring every test will be run with every implementation.
-Priority is only related to mfex autovalidator and not the actions
-autovalidator.::
-
-    $ ./configure --enable-autovalidator --enable-mfex-default-autovalidator \
-        --enable-actions-default-autovalidator
-
-The following line should be seen in the configuration log when the above
-options are used::
-
-    checking whether DPCLS Autovalidator is default implementation... yes
-    checking whether MFEX Autovalidator is default implementation... yes
-    checking whether actions Autovalidator is default implementation... yes
-
-Compile OVS in debug mode to have `ovs_assert` statements error out if
-there is a mismatch in the datapath classifier lookup or packet parser
-implementations.
-
-Since the AVX512 implementation of the datapath interface is disabled by
-default, a compile time option is available in order to test it with the OVS
-unit test suite::
-
-    $ ./configure --enable-dpif-default-avx512
-
-The following line should be seen in the configuration log when the above
-option is used::
-
-    checking whether DPIF AVX512 is default implementation... yes
+    make check-dpdk-offloads OVS_PF_PCI=0000:17:00.0
 
 .. note::
-  Run all the available testsuites including `make check`,
-  `make check-system-userspace` and `make check-dpdk` to ensure the optimal
-  test coverage.
+   This has only been tested on NVIDIA blades due to the limited availability
+   of other blades that support rte_flow.
 
 Kernel datapath
 +++++++++++++++

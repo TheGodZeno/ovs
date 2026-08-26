@@ -40,7 +40,6 @@
 #include "mcast-snooping.h"
 #include "netdev.h"
 #include "nx-match.h"
-#include "odp-execute.h"
 #include "ofproto/bond.h"
 #include "ofproto/ofproto.h"
 #include "openvswitch/dynamic-string.h"
@@ -392,6 +391,8 @@ bridge_init_ofproto(const struct ovsrec_open_vswitch *cfg)
                     iface_hint = xmalloc(sizeof *iface_hint);
                     iface_hint->br_name = br_cfg->name;
                     iface_hint->br_type = br_cfg->datapath_type;
+                    iface_hint->iface_type =
+                        CONST_CAST(char *, iface_get_type(if_cfg, br_cfg));
                     iface_hint->ofp_port = iface_pick_ofport(if_cfg);
 
                     shash_add(&iface_hints, if_cfg->name, iface_hint);
@@ -532,7 +533,6 @@ bridge_init(const char *remote)
     stp_init();
     lldp_init();
     rstp_init();
-    odp_execute_init();
 
     ifaces_changed = seq_create();
     last_ifaces_changed = seq_read(ifaces_changed);

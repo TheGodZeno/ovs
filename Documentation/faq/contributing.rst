@@ -65,9 +65,6 @@ Q: How do I add support for a new field or header?
     without it.  If you implement kernel module support for Linux, then the
     Linux kernel "netdev" mailing list is the place to submit that support
     first; please read up on the Linux kernel development process separately.
-    The Windows datapath kernel module support, on the other hand, is
-    maintained within the OVS tree, so patches for that can go directly to
-    ovs-dev.
 
 Q: How do I add support for a new OpenFlow action?
 
@@ -154,27 +151,10 @@ Q: How do I apply patches from email?
      fi | git am "$@"
      rm "$tmp"
 
-   Another way to apply emailed patches is to use the ``pwclient`` program,
-   which can obtain patches from patchwork and apply them directly.  Download
-   ``pwclient`` at https://patchwork.ozlabs.org/project/openvswitch/.  You
-   probably want to set up a ``.pwclientrc`` that looks something like this::
-
-     [options]
-     default=openvswitch
-     signoff=true
-
-     [openvswitch]
-     url=https://patchwork.ozlabs.org/xmlrpc/
-
-   After you install ``pwclient``, you can apply a patch from patchwork with
-   ``pwclient git-am #``, where # is the patch's number.  (This fails with
-   certain patches that contain form-feeds, due to a limitation of the protocol
-   underlying ``pwclient``.)
-
-   Another way to apply patches directly from patchwork which supports applying
-   patch series is to use the ``git-pw`` program. It can be obtained with
-   ``pip install git-pw``. Alternative installation instructions and general
-   documentation can be found at
+   Another way to apply emailed patches is to use the ``git-pw`` program,
+   which can obtain patches from patchwork and apply them directly.  It can be
+   obtained with ``pip install git-pw``; alternative installation instructions
+   and general documentation can be found at
    https://patchwork.readthedocs.io/projects/git-pw/en/latest/. You need to
    use your openvswitch patchwork login or create one at
    https://patchwork.ozlabs.org/register/. The following can then be set on
@@ -189,3 +169,20 @@ Q: How do I apply patches from email?
    Patch series can be listed with ``git-pw series list`` and applied with
    ``git-pw series apply #``, where # is the series number. Individual patches
    can be applied with ``git-pw patch apply #``, where # is the patch number.
+
+   For more information on patchwork, see :doc:`/internals/patchwork`.
+
+Q: I submitted a patch, what happens next?
+
+   A: After sending your patch to the ovs-dev mailing list, reviewers and
+   maintainers will read it and may reply with comments, questions, or an
+   ``Acked-by:`` indicating approval.  The patch's status is tracked in
+   `Patchwork <https://patchwork.ozlabs.org/project/openvswitch/list/>`__;
+   you should monitor it there rather than waiting passively.
+
+   If the patch is marked **Changes Requested**, the review discussion has
+   concluded that a revised version is needed.  Post a new version as a
+   separate email thread with an incremented version tag (e.g. ``[PATCH v2]``)
+   and a short changelog describing what changed.  See
+   :doc:`/internals/contributing/submitting-patches` for full guidance on
+   posting new versions and the meaning of each patchwork state.

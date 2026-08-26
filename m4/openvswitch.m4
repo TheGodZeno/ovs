@@ -88,128 +88,6 @@ AC_DEFUN([OVS_CHECK_USDT], [
   AM_CONDITIONAL([HAVE_USDT_PROBES], [test $usdt = true])
 ])
 
-dnl Checks for MSVC x64 compiler.
-AC_DEFUN([OVS_CHECK_WIN64],
-  [AC_CACHE_CHECK(
-    [for MSVC x64 compiler],
-    [cl_cv_x64],
-    [dnl "cl" writes x64 output to stdin:
-     if (cl) 2>&1 | grep 'x64' >/dev/null 2>&1; then
-       cl_cv_x64=yes
-       MSVC64_LDFLAGS=" /MACHINE:X64 "
-       MSVC_PLATFORM="x64"
-     else
-       cl_cv_x64=no
-       MSVC64_LDFLAGS=""
-       MSVC_PLATFORM="x86"
-     fi])
-     AC_SUBST([MSVC64_LDFLAGS])
-     AC_SUBST([MSVC_PLATFORM])
-])
-
-dnl Checks for WINDOWS.
-AC_DEFUN([OVS_CHECK_WIN32],
-  [AC_CHECK_HEADER([windows.h],
-                   [WIN32=yes],
-                   [WIN32=no])
-   AM_CONDITIONAL([WIN32], [test "$WIN32" = yes])
-   if test "$WIN32" = yes; then
-      AC_ARG_WITH([pthread],
-         [AS_HELP_STRING([--with-pthread=DIR],
-            [root of the pthread-win32 directory])],
-         [
-            case "$withval" in
-            "" | y | ye | yes | n | no)
-            AC_MSG_ERROR([Invalid --with-pthread value])
-              ;;
-            *)
-            PTHREAD_WIN32_DIR=$withval/lib
-            PTHREAD_WIN32_DIR_DLL=/$(echo ${withval} | ${SED} -e 's/://')/bin
-            PTHREAD_WIN32_DIR_DLL_WIN_FORM=$withval/bin
-            PTHREAD_INCLUDES=-I$withval/include
-            PTHREAD_LDFLAGS=-L$PTHREAD_WIN32_DIR
-            PTHREAD_LIBS="-lpthreadVC3"
-            AC_SUBST([PTHREAD_WIN32_DIR_DLL_WIN_FORM])
-            AC_SUBST([PTHREAD_WIN32_DIR_DLL])
-            AC_SUBST([PTHREAD_INCLUDES])
-            AC_SUBST([PTHREAD_LDFLAGS])
-            AC_SUBST([PTHREAD_LIBS])
-              ;;
-            esac
-         ], [
-            AC_MSG_ERROR([pthread directory not specified])
-         ]
-      )
-      AC_ARG_WITH([debug],
-         [AS_HELP_STRING([--with-debug],
-            [Build without compiler optimizations])],
-         [
-            MSVC_CFLAGS="-O0"
-            AC_SUBST([MSVC_CFLAGS])
-         ], [
-            MSVC_CFLAGS="-O2"
-            AC_SUBST([MSVC_CFLAGS])
-         ]
-      )
-
-      AC_DEFINE([WIN32], [1], [Define to 1 if building on WIN32.])
-      AC_CHECK_TYPES([struct timespec], [], [], [[#include <time.h>]])
-      AH_BOTTOM([#ifdef WIN32
-#include "include/windows/windefs.h"
-#endif])
-   fi])
-
-dnl OVS_CHECK_WINDOWS
-dnl
-dnl Configure Visual Studio solution build
-AC_DEFUN([OVS_CHECK_VISUAL_STUDIO_DDK], [
-if test "$WIN32" = yes; then
-  AC_ARG_WITH([vstudiotarget],
-          [AS_HELP_STRING([--with-vstudiotarget=target_type],
-              [Target type: Debug/Release])],
-          [
-              case "$withval" in
-              "Release") ;;
-              "Debug") ;;
-              *) AC_MSG_ERROR([No valid Visual Studio configuration found]) ;;
-              esac
-
-              VSTUDIO_CONFIG=$withval
-          ], [
-              VSTUDIO_CONFIG="Debug"
-          ]
-        )
-
-    AC_SUBST([VSTUDIO_CONFIG])
-
-  AC_ARG_WITH([vstudiotargetver],
-          [AS_HELP_STRING([--with-vstudiotargetver=target_ver1,target_ver2],
-              [Target versions: Win8,Win8.1,Win10])],
-          [
-              targetver=`echo "$withval" | tr -s , ' ' `
-              for ver in $targetver; do
-                  case "$ver" in
-                  "Win8") VSTUDIO_WIN8=true ;;
-                  "Win8.1")  VSTUDIO_WIN8_1=true ;;
-                  "Win10") VSTUDIO_WIN10=true ;;
-                  *) AC_MSG_ERROR([No valid Visual Studio target version found]) ;;
-                  esac
-              done
-
-          ], [
-              VSTUDIO_WIN8=true
-              VSTUDIO_WIN8_1=true
-              VSTUDIO_WIN10=true
-          ]
-        )
-    AC_DEFINE([VSTUDIO_DDK], [1], [System uses the Visual Studio build target.])
-fi
-AM_CONDITIONAL([VSTUDIO_WIN8], [test -n "$VSTUDIO_WIN8"])
-AM_CONDITIONAL([VSTUDIO_WIN8_1], [test -n "$VSTUDIO_WIN8_1"])
-AM_CONDITIONAL([VSTUDIO_WIN10], [test -n "$VSTUDIO_WIN10"])
-AM_CONDITIONAL([VSTUDIO_DDK], [test -n "$VSTUDIO_CONFIG"])
-])
-
 dnl Checks for Netlink support.
 AC_DEFUN([OVS_CHECK_NETLINK],
   [AC_CHECK_HEADER([linux/netlink.h],
@@ -409,104 +287,6 @@ AC_DEFUN([OVS_CHECK_SPHINX],
    AC_ARG_VAR([SPHINXBUILD])
    AM_CONDITIONAL([HAVE_SPHINX], [test "$SPHINXBUILD" != none])])
 
-
-dnl Checks for compiler correctly emitting AVX512-VL vpermd instruction.
-dnl GCC5 says it exports AVX512-VL, but it doesn't implement "vpermd" instruction
-dnl resulting in compilation failures. To workaround this "reported vs actual"
-dnl mismatch, we compile a small snippet, and conditionally enable AVX512-VL.
-AC_DEFUN([OVS_CHECK_GCC_AVX512VL], [
-  AC_MSG_CHECKING([whether compiler correctly emits AVX512-VL])
-  AC_COMPILE_IFELSE(
-    [AC_LANG_PROGRAM([#include <immintrin.h>
-                     static void __attribute__((__target__("avx512vl")))
-                     check_permutexvar(void)
-                     {
-                         __m256i v_swap32a = _mm256_setr_epi32(0x0, 0x4, 0xF,
-                                                               0xF, 0xF, 0xF,
-                                                               0xF, 0xF);
-                         v_swap32a = _mm256_permutexvar_epi32(v_swap32a,
-                                                              v_swap32a);
-                     }],[])],
-    [AC_MSG_RESULT([yes])
-    ovs_cv_gcc_avx512vl_good=yes],
-    [AC_MSG_RESULT([no])
-    ovs_cv_gcc_avx512vl_good=no])
-   if test "$ovs_cv_gcc_avx512vl_good" = yes; then
-     AC_DEFINE([HAVE_GCC_AVX512VL_GOOD], [1],
-               [Define to 1 if gcc implements the vpermd instruction.])
-   fi
-   AM_CONDITIONAL([HAVE_GCC_AVX512VL_GOOD],
-                  [test "$ovs_cv_gcc_avx512vl_good" = yes])])
-
-dnl Checks whether the build system implements the vpopcntdq instruction. The
-dnl compiler and assembler each separately need to support vpopcntdq. In order
-dnl to test the assembler with the below code snippet, set the optimization
-dnl level of the function to "O0" so it won't be optimized away by the
-dnl compiler.
-AC_DEFUN([OVS_CHECK_AVX512VPOPCNTDQ], [
-  AC_MSG_CHECKING([whether compiler correctly emits AVX512-VPOPCNTDQ])
-  AC_COMPILE_IFELSE(
-    [AC_LANG_PROGRAM([#include <immintrin.h>
-                     void
-                     __attribute__((__target__("avx512vpopcntdq")))
-                     __attribute__((optimize("O0")))
-                     check_vpopcntdq(void)
-                     {
-                         __m512i v_test;
-                         v_test = _mm512_popcnt_epi64(v_test);
-                     }],[])],
-    [AC_MSG_RESULT([yes])
-    ovs_cv_avx512vpopcntdq_good=yes],
-    [AC_MSG_RESULT([no])
-    ovs_cv_avx512vpopcntdq_good=no])
-   if test "$ovs_cv_avx512vpopcntdq_good" = yes; then
-     AC_DEFINE([HAVE_AVX512VPOPCNTDQ], [1],
-               [Define to 1 if the build system implements the vpopcntdq
-                instruction.])
-   fi
-   AM_CONDITIONAL([HAVE_AVX512VPOPCNTDQ],
-                  [test "$ovs_cv_avx512vpopcntdq_good" = yes])])
-
-dnl Checks for binutils/assembler known issue with AVX512.
-dnl Due to backports, we probe assembling a reproducer instead of checking
-dnl binutils version string. More details, including ASM dumps and debug here:
-dnl   GCC: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=90028
-dnl The checking of binutils funcationality instead of LD version is similar
-dnl to as how DPDK proposes to solve this issue:
-dnl   http://patches.dpdk.org/patch/71723/
-AC_DEFUN([OVS_CHECK_BINUTILS_AVX512],
-  [OVS_CHECK_CC_OPTION(
-   [-mavx512f],
-   [AC_CACHE_CHECK(
-    [binutils avx512 assembler checks passing],
-    [ovs_cv_binutils_avx512_good],
-    [dnl Assemble a short snippet to test for issue in "build-aux" dir:
-     mkdir -p build-aux
-     OBJFILE=build-aux/binutils_avx512_check.o
-     GATHER_PARAMS='0x8(,%ymm1,1),%ymm0{%k2}'
-     if ($CC -dumpmachine | grep x86_64) >/dev/null 2>&1; then
-       echo "vpgatherqq $GATHER_PARAMS" | as --64 -o $OBJFILE -
-       if (objdump -d  --no-show-raw-insn $OBJFILE | grep -q $GATHER_PARAMS) >/dev/null 2>&1; then
-         ovs_cv_binutils_avx512_good=yes
-       else
-         ovs_cv_binutils_avx512_good=no
-         dnl Explicitly disallow avx512f to stop compiler auto-vectorizing
-         dnl and causing zmm usage with buggy binutils versions.
-         CFLAGS="$CFLAGS -mno-avx512f"
-       fi
-       rm $OBJFILE
-     else
-       dnl non x86_64 architectures don't have avx512, so not affected
-       ovs_cv_binutils_avx512_good=no
-     fi])],
-    [ovs_cv_binutils_avx512_good=no])
-   if test "$ovs_cv_binutils_avx512_good" = yes; then
-     AC_DEFINE([HAVE_LD_AVX512_GOOD], [1],
-               [Define to 1 if binutils correctly supports AVX512.])
-   fi
-   AM_CONDITIONAL([HAVE_LD_AVX512_GOOD],
-                  [test "$ovs_cv_binutils_avx512_good" = yes])])
-
 dnl Checks for dot.
 AC_DEFUN([OVS_CHECK_DOT],
   [AC_CACHE_CHECK(
@@ -668,8 +448,27 @@ AC_DEFUN([OVS_CHECK_ATOMIC_ALWAYS_LOCK_FREE],
 
 dnl OVS_CHECK_POSIX_AIO
 AC_DEFUN([OVS_CHECK_POSIX_AIO],
-  [AC_SEARCH_LIBS([aio_write], [rt])
-   AM_CONDITIONAL([HAVE_POSIX_AIO], [test "$ac_cv_search_aio_write" != no])])
+  [AC_ARG_ENABLE(
+     [posix-aio],
+     [AS_HELP_STRING([--disable-posix-aio],
+                     [Disable POSIX asynchronous I/O for logging])],
+     [case "${enableval}" in
+        (yes) posix_aio=true ;;
+        (no)  posix_aio=false ;;
+        (*) AC_MSG_ERROR([bad value ${enableval} for --enable-posix-aio]) ;;
+      esac],
+     [posix_aio=check])
+
+   if test "$posix_aio" != false; then
+      AC_SEARCH_LIBS([aio_write], [rt])
+   fi
+
+   if test "$posix_aio" = true && test "$ac_cv_search_aio_write" = no; then
+      AC_MSG_ERROR([POSIX AIO support requested, but aio_write not found])
+   fi
+
+   AM_CONDITIONAL([HAVE_POSIX_AIO],
+     [test "$posix_aio" != false && test "$ac_cv_search_aio_write" != no])])
 
 dnl OVS_CHECK_INCLUDE_NEXT
 AC_DEFUN([OVS_CHECK_INCLUDE_NEXT],

@@ -1277,23 +1277,12 @@ dpdk_eth_dev_init_rx_metadata(struct netdev_dpdk *dev)
     /* For the fallback offload (non-"transfer" rules). */
     rx_metadata |= RTE_ETH_RX_METADATA_USER_MARK;
 
-#ifdef ALLOW_EXPERIMENTAL_API
-    /* For the tunnel offload.  */
-    rx_metadata |= RTE_ETH_RX_METADATA_TUNNEL_ID;
-#endif /* ALLOW_EXPERIMENTAL_API */
-
     ret = rte_eth_rx_metadata_negotiate(dev->port_id, &rx_metadata);
     if (ret == 0) {
         if (!(rx_metadata & RTE_ETH_RX_METADATA_USER_MARK)) {
             VLOG_DBG("%s: The NIC will not provide per-packet USER_MARK",
                      netdev_get_name(&dev->up));
         }
-#ifdef ALLOW_EXPERIMENTAL_API
-        if (!(rx_metadata & RTE_ETH_RX_METADATA_TUNNEL_ID)) {
-            VLOG_DBG("%s: The NIC will not provide per-packet TUNNEL_ID",
-                     netdev_get_name(&dev->up));
-        }
-#endif /* ALLOW_EXPERIMENTAL_API */
     } else {
         VLOG(ret == -ENOTSUP ? VLL_DBG : VLL_WARN,
              "%s: Cannot negotiate Rx metadata: %s",
@@ -2030,13 +2019,15 @@ netdev_dpdk_lookup_by_port_id(dpdk_port_t port_id)
 }
 
 static dpdk_port_t
-netdev_dpdk_get_port_by_mac(const char *mac_str)
+netdev_dpdk_get_port_by_mac(const char *mac_str, char const **extra_err)
 {
     dpdk_port_t port_id;
     struct eth_addr mac, port_mac;
 
+    *extra_err = NULL;
+
     if (!eth_addr_from_string(mac_str, &mac)) {
-        VLOG_ERR("invalid mac: %s", mac_str);
+        *extra_err = "invalid mac";
         return DPDK_ETH_PORT_ID_INVALID;
     }
 
@@ -2050,6 +2041,7 @@ netdev_dpdk_get_port_by_mac(const char *mac_str)
         }
     }
 
+    *extra_err = "unknown mac (need dpdk-probe-at-init=true ?)";
     return DPDK_ETH_PORT_ID_INVALID;
 }
 
@@ -2086,31 +2078,38 @@ netdev_dpdk_process_devargs(struct netdev_dpdk *dev,
     OVS_REQUIRES(dpdk_mutex)
 {
     dpdk_port_t new_port_id;
+    char const *extra_err = NULL;
 
     if (strncmp(devargs, "class=eth,mac=", 14) == 0) {
-        new_port_id = netdev_dpdk_get_port_by_mac(&devargs[14]);
+        new_port_id = netdev_dpdk_get_port_by_mac(&devargs[14], &extra_err);
     } else {
         new_port_id = netdev_dpdk_get_port_by_devargs(devargs);
         if (!rte_eth_dev_is_valid_port(new_port_id)) {
+            int ret;
+
             /* Device not found in DPDK, attempt to attach it */
-            if (rte_dev_probe(devargs)) {
+            ret = rte_dev_probe(devargs);
+            if (ret < 0) {
                 new_port_id = DPDK_ETH_PORT_ID_INVALID;
+                extra_err = ovs_strerror(-ret);
             } else {
                 new_port_id = netdev_dpdk_get_port_by_devargs(devargs);
                 if (rte_eth_dev_is_valid_port(new_port_id)) {
                     /* Attach successful */
                     dev->attached = true;
-                    VLOG_INFO("Device '%s' attached to DPDK", devargs);
+                    VLOG_INFO("Device '%s' attached", devargs);
                 } else {
                     /* Attach unsuccessful */
                     new_port_id = DPDK_ETH_PORT_ID_INVALID;
+                    extra_err = "port unknown";
                 }
             }
         }
     }
 
     if (new_port_id == DPDK_ETH_PORT_ID_INVALID) {
-        VLOG_WARN_BUF(errp, "Error attaching device '%s' to DPDK", devargs);
+        VLOG_WARN_BUF(errp, "Error attaching device '%s': %s", devargs,
+                      extra_err ? extra_err : "unknown error");
     }
 
     return new_port_id;
@@ -3235,13 +3234,13 @@ dpdk_copy_batch_to_mbuf(struct netdev *netdev, struct dp_packet_batch *batch)
 
     DP_PACKET_BATCH_REFILL_FOR_EACH (i, size, packet, batch) {
         if (OVS_UNLIKELY(packet->source == DPBUF_DPDK)) {
-            dp_packet_batch_refill(batch, packet, i);
+            dp_packet_batch_add(batch, packet);
         } else {
             struct dp_packet *pktcopy;
 
             pktcopy = dpdk_copy_dp_packet_to_mbuf(dev->dpdk_mp->mp, packet);
             if (pktcopy) {
-                dp_packet_batch_refill(batch, pktcopy, i);
+                dp_packet_batch_add(batch, pktcopy);
             }
 
             dp_packet_delete(packet);
@@ -3342,12 +3341,19 @@ netdev_dpdk_vhost_send(struct netdev *netdev, int qid,
             cnt -= tx_pkts;
             /* Prepare for possible retry.*/
             pkts = &pkts[tx_pkts];
-            if (OVS_UNLIKELY(cnt && !retries)) {
-                /*
-                 * Read max retries as there are packets not sent
-                 * and no retries have already occurred.
-                 */
-                atomic_read_relaxed(&dev->vhost_tx_retries_max, &max_retries);
+            if (OVS_UNLIKELY(cnt)) {
+                if (!retries) {
+                    /* Read max retries as there are packets not sent
+                     * and no retries have already occurred. */
+                    atomic_read_relaxed(&dev->vhost_tx_retries_max,
+                                        &max_retries);
+                }
+                if (tx_pkts == 32) {
+                    /* As of v25.11, the vhost library only sends 32 mbufs
+                     * at maximum for a reason lost in limbo.
+                     * Extend our max retries for this batch. */
+                    max_retries++;
+                }
             }
         } else {
             /* No packets sent - do not retry.*/
@@ -6535,13 +6541,6 @@ netdev_dpdk_flow_api_supported(struct netdev *netdev, bool check_only)
     struct netdev_dpdk *dev;
     bool ret = false;
 
-    if ((!strcmp(netdev_get_type(netdev), "vxlan") ||
-         !strcmp(netdev_get_type(netdev), "gre")) &&
-        !strcmp(netdev_get_dpif_type(netdev), "netdev")) {
-        ret = true;
-        goto out;
-    }
-
     if (!is_dpdk_class(netdev->netdev_class)) {
         goto out;
     }
@@ -6617,118 +6616,6 @@ netdev_dpdk_rte_flow_query_count(struct netdev *netdev,
     ret = rte_flow_query(dev->port_id, rte_flow, actions, query, error);
     return ret;
 }
-
-#ifdef ALLOW_EXPERIMENTAL_API
-
-int
-netdev_dpdk_rte_flow_tunnel_decap_set(struct netdev *netdev,
-                                      struct rte_flow_tunnel *tunnel,
-                                      struct rte_flow_action **actions,
-                                      uint32_t *num_of_actions,
-                                      struct rte_flow_error *error)
-{
-    struct netdev_dpdk *dev;
-    int ret;
-
-    if (!is_dpdk_class(netdev->netdev_class)) {
-        return -1;
-    }
-
-    dev = netdev_dpdk_cast(netdev);
-    ovs_mutex_lock(&dev->mutex);
-    ret = rte_flow_tunnel_decap_set(dev->port_id, tunnel, actions,
-                                    num_of_actions, error);
-    ovs_mutex_unlock(&dev->mutex);
-    return ret;
-}
-
-int
-netdev_dpdk_rte_flow_tunnel_match(struct netdev *netdev,
-                                  struct rte_flow_tunnel *tunnel,
-                                  struct rte_flow_item **items,
-                                  uint32_t *num_of_items,
-                                  struct rte_flow_error *error)
-{
-    struct netdev_dpdk *dev;
-    int ret;
-
-    if (!is_dpdk_class(netdev->netdev_class)) {
-        return -1;
-    }
-
-    dev = netdev_dpdk_cast(netdev);
-    ovs_mutex_lock(&dev->mutex);
-    ret = rte_flow_tunnel_match(dev->port_id, tunnel, items, num_of_items,
-                                error);
-    ovs_mutex_unlock(&dev->mutex);
-    return ret;
-}
-
-int
-netdev_dpdk_rte_flow_get_restore_info(struct netdev *netdev,
-                                      struct dp_packet *p,
-                                      struct rte_flow_restore_info *info,
-                                      struct rte_flow_error *error)
-{
-    struct rte_mbuf *m = (struct rte_mbuf *) p;
-    struct netdev_dpdk *dev;
-    int ret;
-
-    if (!is_dpdk_class(netdev->netdev_class)) {
-        return -1;
-    }
-
-    dev = netdev_dpdk_cast(netdev);
-    ovs_mutex_lock(&dev->mutex);
-    ret = rte_flow_get_restore_info(dev->port_id, m, info, error);
-    ovs_mutex_unlock(&dev->mutex);
-    return ret;
-}
-
-int
-netdev_dpdk_rte_flow_tunnel_action_decap_release(
-    struct netdev *netdev,
-    struct rte_flow_action *actions,
-    uint32_t num_of_actions,
-    struct rte_flow_error *error)
-{
-    struct netdev_dpdk *dev;
-    int ret;
-
-    if (!is_dpdk_class(netdev->netdev_class)) {
-        return -1;
-    }
-
-    dev = netdev_dpdk_cast(netdev);
-    ovs_mutex_lock(&dev->mutex);
-    ret = rte_flow_tunnel_action_decap_release(dev->port_id, actions,
-                                               num_of_actions, error);
-    ovs_mutex_unlock(&dev->mutex);
-    return ret;
-}
-
-int
-netdev_dpdk_rte_flow_tunnel_item_release(struct netdev *netdev,
-                                         struct rte_flow_item *items,
-                                         uint32_t num_of_items,
-                                         struct rte_flow_error *error)
-{
-    struct netdev_dpdk *dev;
-    int ret;
-
-    if (!is_dpdk_class(netdev->netdev_class)) {
-        return -1;
-    }
-
-    dev = netdev_dpdk_cast(netdev);
-    ovs_mutex_lock(&dev->mutex);
-    ret = rte_flow_tunnel_item_release(dev->port_id, items, num_of_items,
-                                       error);
-    ovs_mutex_unlock(&dev->mutex);
-    return ret;
-}
-
-#endif /* ALLOW_EXPERIMENTAL_API */
 
 static void
 parse_mempool_config(const struct smap *ovs_other_config)

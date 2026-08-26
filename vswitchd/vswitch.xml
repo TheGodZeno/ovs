@@ -453,6 +453,37 @@
         </p>
       </column>
 
+      <column name="other_config" key="dpdk-probe-at-init"
+              type='{"type": "boolean"}'>
+        <p>
+          Specifies whether DPDK should probe all devices available at the
+          time DPDK is initialized. When set to <code>false</code> (the
+          default), OVS will instruct DPDK to skip probing devices at
+          initialization, unless <ref column="other_config" key="dpdk-extra"/>
+          already contains allowed or blocked devices. This is required when
+          declaring DPDK ports using the
+          <code>class=eth,mac=XX:XX:XX:XX:XX:XX</code> syntax.
+        </p>
+        <p>
+          Enabling this option implies higher resource consumption, as OVS may
+          not use all probed devices. It may also cause undesired side effects
+          such as additional interrupt handling and link status checks for
+          unused devices. For example, mlx5 devices maintain link status and
+          liveness by taking kernel locks frequently, even when OVS only uses
+          a subset of the available ports.
+        </p>
+        <p>
+          Note that this option has no effect when
+          <ref column="other_config" key="dpdk-extra"/> contains allowed
+          (<code>-a</code> or <code>--allow</code>) or blocked
+          (<code>-b</code> or <code>--block</code>) devices, as DPDK will
+          honor those specifications regardless of this setting.
+        </p>
+        <p>
+          Defaults to <code>false</code>.
+        </p>
+      </column>
+
       <column name="other_config" key="dpdk-extra"
               type='{"type": "string"}'>
         <p>
@@ -960,17 +991,11 @@
 
         <column name="statistics" key="cpu"
                 type='{"type": "integer", "minInteger": 1}'>
-          <p>
-            Number of CPU processors, threads, or cores currently online and
-            available to the operating system on which Open vSwitch is running,
-            as an integer.  This may be less than the number installed, if some
-            are not online or if they are not available to the operating
-            system.
-          </p>
-          <p>
-            Open vSwitch userspace processes are not multithreaded, but the
-            Linux kernel-based datapath is.
-          </p>
+          Number of CPU processors, threads, or cores currently online and
+          available to the operating system on which Open vSwitch is running,
+          as an integer.  This may be less than the number installed, if some
+          are not online or if they are not available to the operating
+          system.
         </column>
 
         <column name="statistics" key="load_average">
@@ -2666,8 +2691,8 @@
             The names of interfaces implemented as Linux and BSD network
             devices, including interfaces with type <code>internal</code>,
             <code>tap</code>, or <code>system</code> plus the different types
-            of tunnel ports, are limited to 15 bytes. Windows limits these
-            names to 255 bytes.
+            of tunnel ports, are limited to 15 bytes.  In general, different
+            datapath implementations may have different limitations.
           </li>
 
           <li>
@@ -3166,12 +3191,6 @@
               OpenFlow controllers that expect this behavior.
             </li>
             <li>
-              The <code>legacy_l3</code> option is only available via the
-              user space datapath.  The OVS kernel datapath does not support
-              devices of type ARPHRD_IPGRE which is the requirement for
-              <code>legacy_l3</code> type packets.
-            </li>
-            <li>
               If this option is <code>ptap</code>, the tunnel sends and
               receives any kind of packet.  Open vSwitch represents packets in
               the tunnel using the <code>packet_type</code> mechanism
@@ -3210,14 +3229,11 @@
           </p>
 
           <p>
-            When using the upstream Linux kernel module, computation of
-            checksums for <code>geneve</code> and <code>vxlan</code> requires
-            Linux kernel version 4.0 or higher. <code>gre</code> and
+            When using the Linux kernel datapath, computation of checksums
+            for <code>geneve</code> and <code>vxlan</code> requires Linux
+            kernel version 4.0 or higher.  <code>gre</code> and
             <code>ip6gre</code> support checksums for all versions of
             Open vSwitch that support GRE.
-            The out of tree kernel module distributed as part of OVS
-            can compute all tunnel checksums on any kernel version that it
-            is compatible with.
           </p>
 
         </column>
@@ -3744,6 +3760,19 @@ ovs-vsctl add-port br0 p0 -- set Interface p0 type=patch options:peer=p1 \
 
       <column name="status" key="firmware_version">
         The version string of the network adapter's firmware, if available.
+      </column>
+
+      <column name="status" key="peer_ifindex">
+        <p>
+          For veth devices on Linux, this column contains the interface index
+          of the peer veth device.  This allows applications to
+          programmatically discover veth pairs without requiring additional
+          system calls or parsing network interface information.
+        </p>
+        <p>
+          Only present for veth devices (when <ref column="status"
+          key="driver_name"/> is "veth").  Not available on non-Linux systems.
+        </p>
       </column>
 
       <column name="status" key="source_ip">
@@ -6218,13 +6247,12 @@ ovs-vsctl add-port br0 p1 -- \
     <p>
       A datapath is responsible for providing the packet handling in Open
       vSwitch.  There are two primary datapath implementations used by
-      Open vSwitch: kernel and userspace.  Kernel datapath
-      implementations are available for Linux and Hyper-V, and selected
-      as <code>system</code> in the <ref column="datapath_type"/> column
-      of the <ref table="Bridge"/> table.  The userspace datapath is used
-      by DPDK and AF-XDP, and is selected as <code>netdev</code> in the
-      <ref column="datapath_type"/> column of the <ref table="Bridge"/>
-      table.
+      Open vSwitch: kernel and userspace.  Kernel datapath implementation is
+      available for Linux and selected as <code>system</code> in the
+      <ref column="datapath_type"/> column of the <ref table="Bridge"/> table.
+      The userspace datapath is used by DPDK and AF-XDP, and is selected as
+      <code>netdev</code> in the <ref column="datapath_type"/> column of the
+      <ref table="Bridge"/> table.
     </p>
     <p>
       A datapath of a particular type is shared by all the bridges that use
@@ -6244,17 +6272,6 @@ ovs-vsctl add-port br0 p1 -- \
 
       <ul>
         <li>
-          When the kernel module included in the Open vSwitch source tree is
-          used, this column reports the Open vSwitch version from which the
-          module was taken.
-        </li>
-
-        <li>
-          When the kernel module that is part of the upstream Linux kernel is
-          used, this column reports <code>&lt;unknown&gt;</code>.
-        </li>
-
-        <li>
           When the datapath is built into the <code>ovs-vswitchd</code>
           binary, this column reports <code>&lt;built-in&gt;</code>.  A
           built-in datapath is by definition the same version as the rest of
@@ -6262,23 +6279,22 @@ ovs-vsctl add-port br0 p1 -- \
         </li>
 
         <li>
-          Other datapaths (such as the Hyper-V kernel datapath) currently
-          report <code>&lt;unknown&gt;</code>.
+          Other datapaths currently report <code>&lt;unknown&gt;</code>.
         </li>
       </ul>
 
       <p>
         A version discrepancy between <code>ovs-vswitchd</code> and the
         datapath in use is not normally cause for alarm.  The Open vSwitch
-        kernel datapaths for Linux and Hyper-V, in particular, are designed
-        for maximum inter-version compatibility: any userspace version works
-        with with any kernel version.  Some reasons do exist to insist on
-        particular user/kernel pairings.  First, newer kernel versions add
-        new features, that can only be used by new-enough userspace, e.g.
-        VXLAN tunneling requires certain minimal userspace and kernel
-        versions.  Second, as an extension to the first reason, some newer
-        kernel versions add new features for enhancing performance that only
-        new-enough userspace versions can take advantage of.
+        kernel datapaths for Linux, in particular, is designed for maximum
+        inter-version compatibility: any userspace version works with any
+        kernel version.  Some reasons do exist to insist on particular
+        user/kernel pairings.  First, newer kernel versions add new features,
+        that can only be used by new-enough userspace, e.g. VXLAN tunneling
+        requires certain minimal userspace and kernel versions.  Second, as
+        an extension to the first reason, some newer kernel versions add new
+        features for enhancing performance that only new-enough userspace
+        versions can take advantage of.
       </p>
     </column>
 
@@ -6295,10 +6311,9 @@ ovs-vsctl add-port br0 p1 -- \
         features.  For the <code>netdev</code> datapath, the
         capabilities are fixed for a given version of Open vSwitch
         because this datapath is built into the
-        <code>ovs-vswitchd</code> binary.  The Linux kernel and
-        Windows and other datapaths, which are external to OVS
-        userspace, can vary in version and capabilities independently
-        from <code>ovs-vswitchd</code>.
+        <code>ovs-vswitchd</code> binary.  The Linux kernel and other
+        datapaths, which are external to OVS userspace, can vary in version
+        and capabilities independently from <code>ovs-vswitchd</code>.
       </p>
 
       <p>

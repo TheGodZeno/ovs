@@ -27,8 +27,7 @@ Coding Style
 
 This file describes the coding style used in most C files in the Open vSwitch
 distribution. However, Linux kernel code datapath directory follows the Linux
-kernel's established coding conventions. For the Windows kernel datapath code,
-use the coding style described in :doc:`coding-style-windows`.
+kernel's established coding conventions.
 
 The following GNU indent options approximate this style.
 
@@ -210,7 +209,9 @@ null-pointer check. We find that this usually makes code easier to read.
 Functions in ``.c`` files should not normally be marked ``inline``, because it
 does not usually help code generation and it does suppress compiler warnings
 about unused functions. (Functions defined in ``.h`` usually should be marked
-``inline``.)
+``inline``.) In cases where a ``.c`` file genuinely requires using
+``static inline`` functions, they should also be decorated with
+``ALWAYS_INLINE``.
 
 .. _function prototypes:
 

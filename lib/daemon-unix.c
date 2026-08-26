@@ -347,6 +347,7 @@ monitor_daemon(pid_t daemon_pid)
     time_t last_restart;
     char *status_msg;
     int crashes;
+    int status;
     bool child_ready = true;
 
     set_subprogram_name("monitor");
@@ -355,7 +356,6 @@ monitor_daemon(pid_t daemon_pid)
     crashes = 0;
     for (;;) {
         int retval;
-        int status;
 
         ovs_cmdl_proctitle_set("monitoring pid %lu (%s)",
                                (unsigned long int) daemon_pid, status_msg);
@@ -707,25 +707,6 @@ check_already_running(void)
         VLOG_FATAL("%s: pidfile check failed (%s), aborting",
                    pidfile, ovs_strerror(-pid));
     }
-}
-
-
-/* stub functions for non-windows platform. */
-
-void
-service_start(int *argc OVS_UNUSED, char **argv[] OVS_UNUSED)
-{
-}
-
-void
-service_stop(void)
-{
-}
-
-bool
-should_service_stop(void)
-{
-    return false;
 }
 
 

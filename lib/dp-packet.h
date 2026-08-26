@@ -862,32 +862,47 @@ enum { NETDEV_MAX_BURST = 32 }; /* Maximum number packets in a batch. */
 struct dp_packet_batch {
     size_t count;
     bool trunc; /* true if the batch needs truncate. */
-    struct dp_packet *packets[NETDEV_MAX_BURST];
+    struct dp_packet **packets;
+    size_t capacity;
+    struct dp_packet *embedded[NETDEV_MAX_BURST];
 };
 
 static inline void
-dp_packet_batch_init(struct dp_packet_batch *batch)
+dp_packet_batch_reset(struct dp_packet_batch *batch)
 {
     batch->count = 0;
     batch->trunc = false;
 }
 
 static inline void
-dp_packet_batch_add__(struct dp_packet_batch *batch,
-                      struct dp_packet *packet, size_t limit)
+dp_packet_batch_init(struct dp_packet_batch *batch)
 {
-    if (batch->count < limit) {
-        batch->packets[batch->count++] = packet;
-    } else {
-        dp_packet_delete(packet);
-    }
+    dp_packet_batch_reset(batch);
+    batch->capacity = ARRAY_SIZE(batch->embedded);
+    batch->packets = batch->embedded;
 }
 
-/* When the batch is full, 'packet' will be dropped and freed. */
+void dp_packet_batch_grow(struct dp_packet_batch *, size_t count);
+
 static inline void
 dp_packet_batch_add(struct dp_packet_batch *batch, struct dp_packet *packet)
 {
-    dp_packet_batch_add__(batch, packet, NETDEV_MAX_BURST);
+    if (OVS_UNLIKELY(batch->count == batch->capacity)) {
+        dp_packet_batch_grow(batch, NETDEV_MAX_BURST);
+    }
+    batch->packets[batch->count++] = packet;
+}
+
+static inline void
+dp_packet_batch_add_array(struct dp_packet_batch *batch,
+                          struct dp_packet *packets[], size_t n)
+{
+    if (OVS_UNLIKELY(batch->count + n > batch->capacity)) {
+        size_t delta = batch->count + n - batch->capacity;
+        dp_packet_batch_grow(batch, ROUND_UP(delta, NETDEV_MAX_BURST));
+    }
+    memcpy(&batch->packets[batch->count], packets, n * sizeof packets[0]);
+    batch->count += n;
 }
 
 static inline size_t
@@ -896,20 +911,18 @@ dp_packet_batch_size(const struct dp_packet_batch *batch)
     return batch->count;
 }
 
-/* Clear 'batch' for refill. Use dp_packet_batch_refill() to add
- * packets back into the 'batch'. */
+static inline size_t
+dp_packet_batch_capacity(const struct dp_packet_batch *batch)
+{
+    return batch->capacity;
+}
+
+/* Clear 'batch' for refill. */
 static inline void
 dp_packet_batch_refill_init(struct dp_packet_batch *batch)
 {
     batch->count = 0;
 };
-
-static inline void
-dp_packet_batch_refill(struct dp_packet_batch *batch,
-                       struct dp_packet *packet, size_t idx)
-{
-    dp_packet_batch_add__(batch, packet, MIN(NETDEV_MAX_BURST, idx + 1));
-}
 
 static inline void
 dp_packet_batch_init_packet(struct dp_packet_batch *batch, struct dp_packet *p)
@@ -925,12 +938,6 @@ dp_packet_batch_is_empty(const struct dp_packet_batch *batch)
     return !dp_packet_batch_size(batch);
 }
 
-static inline bool
-dp_packet_batch_is_full(const struct dp_packet_batch *batch)
-{
-    return dp_packet_batch_size(batch) == NETDEV_MAX_BURST;
-}
-
 #define DP_PACKET_BATCH_FOR_EACH(IDX, PACKET, BATCH)                \
     for (size_t IDX = 0; IDX < dp_packet_batch_size(BATCH); IDX++)  \
         if (PACKET = (BATCH)->packets[IDX], true)
@@ -939,7 +946,7 @@ dp_packet_batch_is_full(const struct dp_packet_batch *batch)
  * dropped after going through each packet in the 'BATCH'.
  *
  * For packets to stay in the 'BATCH', they need to be refilled back
- * into the 'BATCH' by calling dp_packet_batch_refill(). Caller owns
+ * into the 'BATCH' by calling dp_packet_batch_add(). Caller owns
  * the packets that are not refilled.
  *
  * Caller needs to supply 'SIZE', that stores the current number of
@@ -971,6 +978,31 @@ dp_packet_batch_clone(struct dp_packet_batch *dst,
     dst->trunc = src->trunc;
 }
 
+/* Swaps content of two batches. */
+static inline void
+dp_packet_batch_swap(struct dp_packet_batch *a, struct dp_packet_batch *b)
+{
+    struct dp_packet_batch c = *a;
+
+    *a = *b;
+    *b = c;
+    if (a->packets == b->embedded) {
+        a->packets = a->embedded;
+    }
+    if (b->packets == a->embedded) {
+        b->packets = b->embedded;
+    }
+}
+
+static inline void
+dp_packet_batch_destroy(struct dp_packet_batch *batch)
+{
+    if (batch->packets != batch->embedded) {
+        free(batch->packets);
+    }
+    batch->packets = NULL;
+}
+
 static inline void
 dp_packet_delete_batch(struct dp_packet_batch *batch, bool should_steal)
 {
@@ -980,7 +1012,7 @@ dp_packet_delete_batch(struct dp_packet_batch *batch, bool should_steal)
         DP_PACKET_BATCH_FOR_EACH (i, packet, batch) {
             dp_packet_delete(packet);
         }
-        dp_packet_batch_init(batch);
+        dp_packet_batch_reset(batch);
     }
 }
 

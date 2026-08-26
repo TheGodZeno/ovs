@@ -182,6 +182,7 @@ Fabrizio D'Angelo                  fdangelo@redhat.com
 Faicker Mo                         faicker.mo@ucloud.cn
 fang                               fangjiannan@cmss.chinamobile.com
 Fangrui Song                       maskray@google.com
+Fei Wang                           fei.wang@jaguarmicro.com
 Felix Huettner                     felix.huettner@digits.schwarz
 Felix Moebius                      felix.moebius@digits.schwarz
 Fengqi Li                          lifengqi@inspur.com
@@ -367,6 +368,7 @@ Moshe Levi                         moshele@mellanox.com
 Murphy McCauley                    murphy.mccauley@gmail.com
 Mykola Yurchenko                   myurchenko@nvidia.com
 Natasha Gude
+Naveen Yerramneni                  naveen.yerramneni@nutanix.com
 Neal Shrader                       neal@digitalocean.com
 Neil McKee                         neil.mckee@inmon.com
 Neil Zhu                           zhuj@centecnetworks.com
@@ -412,6 +414,7 @@ Reid Price
 Remi Jouannet                      remi.jouannet@outscale.com
 Remko Tronçon                      git@el-tramo.be
 Renat Nurgaliyev                   impleman@gmail.com
+Reuven Plevinsky                   rplevinsky@nvidia.com
 Rich Lane                          rlane@bigswitch.com
 Richard Oliver                     richard@richard-oliver.co.uk
 Rishi Bamba                        rishi.bamba@tcs.com
@@ -476,6 +479,7 @@ SUGYO Kazushi                      sugyo.org@gmail.com
 Sunyang Wu                         sunyang.wu@jaguarmicro.com
 Surya Rudra                        rudrasurya.r@altencalsoftlabs.com
 Tadaaki Nagao                      nagao@stratosphere.co.jp
+Takeru Hayasaka                    hayatake396@gmail.com
 Tao Liu                            thomas.liu@ucloud.cn
 Tao YunXiang                       taoyunxiang@cmss.chinamobile.com
 Terry Wilson                       twilson@redhat.com
@@ -786,6 +790,7 @@ Taekho Nam                      thnam@smartx.kr
 Takayuki HAMA                   t-hama@cb.jp.nec.com
 Teemu Koponen
 Thomas Morin                    thomas.morin@orange.com
+Tim Rozet                       trozet@nvidia.com
 Timothy Chen
 Torbjorn Tornkvist              kruskakli@gmail.com
 Tulio Ribeiro                   tribeiro@lasige.di.fc.ul.pt
@@ -801,6 +806,7 @@ Yeming Zhao                     zhaoyeming@gmail.com
 Yi Ba                           yby.developer@yahoo.com
 Ying Chen                       yingchen@vmware.com
 Yongqiang Liu                   liuyq7809@gmail.com
+Yuliang Xiao                    xyl1509410143@gmail.com
 ZHANG Zhiming                   zhangzhiming@yunshan.net.cn
 Zhangguanghui                   zhang.guanghui@h3c.com
 Zheng Jingzhou                  glovejmm@163.com
